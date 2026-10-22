@@ -3,15 +3,17 @@ import { type AccountWithCalculatedBalance } from '../database/queries';
 import { formatRupiah } from '../utils/currency';
 import { FONTS } from '../constants/theme';
 import { useThemeStore } from '../stores/useThemeStore';
+import { EditActionIcon } from './ActionIcons';
 
 interface Props {
   account: AccountWithCalculatedBalance;
   onPress: () => void;
   onLongPress?: () => void;
+  onEdit?: () => void;
   onDelete?: () => void;
 }
 
-export default function AccountCard({ account, onPress, onLongPress, onDelete }: Props) {
+export default function AccountCard({ account, onPress, onLongPress, onEdit, onDelete }: Props) {
   const palette = useThemeStore((s) => s.palette);
   const isDarkMode = useThemeStore((s) => s.isDarkMode);
 
@@ -60,15 +62,26 @@ export default function AccountCard({ account, onPress, onLongPress, onDelete }:
                 </View>
               )}
             </View>
-            {onDelete && account.is_default !== 1 && (
-              <Pressable
-                hitSlop={8}
-                style={({ pressed }) => [styles.deleteBtn, pressed && { opacity: 0.6 }]}
-                onPress={onDelete}
-              >
-                <Text style={styles.deleteIconText}>🗑️</Text>
-              </Pressable>
-            )}
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+              {onEdit && (
+                <Pressable
+                  hitSlop={8}
+                  style={({ pressed }) => [styles.deleteBtn, { backgroundColor: palette.cardMuted }, pressed && { opacity: 0.6 }]}
+                  onPress={onEdit}
+                >
+                  <EditActionIcon color={palette.primary} size={15} />
+                </Pressable>
+              )}
+              {onDelete && account.is_default !== 1 && (
+                <Pressable
+                  hitSlop={8}
+                  style={({ pressed }) => [styles.deleteBtn, { backgroundColor: palette.cardMuted }, pressed && { opacity: 0.6 }]}
+                  onPress={onDelete}
+                >
+                  <Text style={styles.deleteIconText}>🗑️</Text>
+                </Pressable>
+              )}
+            </View>
           </View>
           <Text style={[styles.typeText, { color: palette.inkMuted }]}>{typeLabels[account.type]}</Text>
         </View>

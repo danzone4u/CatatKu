@@ -9,6 +9,7 @@ import {
   TextInput,
   Alert,
   ScrollView,
+  useWindowDimensions,
 } from 'react-native';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useFocusEffect, router, Stack } from 'expo-router';
@@ -18,6 +19,7 @@ import { useCashbookStore } from '../src/stores/useCashbookStore';
 import {
   getMonthlyBills,
   addMonthlyBill,
+  updateMonthlyBill,
   payMonthlyBill,
   deleteMonthlyBill,
   getAccounts,
@@ -26,13 +28,16 @@ import {
   type AccountWithCalculatedBalance,
   type Category,
 } from '../src/database/queries';
-import { formatRupiah } from '../src/utils/currency';
+import { formatRupiah, formatNumberThousand, parseRupiahInput } from '../src/utils/currency';
 import { getNowFull } from '../src/utils/date';
 import { FONTS } from '../src/constants/theme';
-import { BackArrowIcon } from '../src/components/ActionIcons';
+import { BackArrowIcon, EditActionIcon } from '../src/components/ActionIcons';
+import DatePickerModal from '../src/components/DatePickerModal';
 
 export default function BillsScreen() {
   const db = useSQLiteContext();
+  const { width } = useWindowDimensions();
+  const isTablet = width >= 600;
   const palette = useThemeStore((s) => s.palette);
   const isDarkMode = useThemeStore((s) => s.isDarkMode);
   const activeCashbook = useCashbookStore((s) => s.activeCashbook);
@@ -42,11 +47,13 @@ export default function BillsScreen() {
   const [accounts, setAccounts] = useState<AccountWithCalculatedBalance[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
 
-  // Modal Tambah Tagihan
-  const [showAddModal, setShowAddModal] = useState(false);
+  // Modal Tambah / Edit Tagihan
+  const [showFormModal, setShowFormModal] = useState(false);
+  const [editingBillId, setEditingBillId] = useState<number | null>(null);
   const [name, setName] = useState('');
   const [amount, setAmount] = useState('');
-  const [dueDay, setDueDay] = useState('1');
+  const [dueDay, setDueDay] = useState(10);
+  const [showDatePicker, setShowDatePicker] = useState(false);
   const [selectedCatId, setSelectedCatId] = useState<number | null>(null);
   const [selectedAccId, setSelectedAccId] = useState<number | null>(null);
 
@@ -69,17 +76,17 @@ export default function BillsScreen() {
       setAccounts(accList);
       setCategories(catList);
 
-      if (accList.length > 0) {
+      if (accList.length > 0 && !selectedAccId) {
         setSelectedAccId(accList[0].id);
         setPayAccId(accList[0].id);
       }
-      if (catList.length > 0) {
+      if (catList.length > 0 && !selectedCatId) {
         setSelectedCatId(catList[0].id);
       }
     } catch (e) {
       console.warn('loadData Bills error:', e);
     }
-  }, [db, cashbookId]);
+  }, [db, cashbookId, selectedAccId, selectedCatId]);
 
   useFocusEffect(
     useCallback(() => {
@@ -87,9 +94,28 @@ export default function BillsScreen() {
     }, [loadData])
   );
 
-  const handleAddBill = async () => {
-    const numAmount = parseFloat(amount.replace(/[^0-9]/g, ''));
-    const numDay = parseInt(dueDay, 10);
+  const openAddModal = () => {
+    setEditingBillId(null);
+    setName('');
+    setAmount('');
+    setDueDay(10);
+    if (accounts.length > 0) setSelectedAccId(accounts[0].id);
+    if (categories.length > 0) setSelectedCatId(categories[0].id);
+    setShowFormModal(true);
+  };
+
+  const openEditModal = (bill: MonthlyBill) => {
+    setEditingBillId(bill.id);
+    setName(bill.name);
+    setAmount(formatNumberThousand(bill.amount));
+    setDueDay(bill.due_day);
+    setSelectedCatId(bill.category_id ?? null);
+    setSelectedAccId(bill.account_id ?? null);
+    setShowFormModal(true);
+  };
+
+  const handleSaveBill = async () => {
+    const numAmount = parseRupiahInput(amount);
 
     if (!name.trim()) {
       Alert.alert('Perhatian', 'Nama tagihan wajib diisi');
@@ -99,28 +125,35 @@ export default function BillsScreen() {
       Alert.alert('Perhatian', 'Nominal tagihan harus lebih dari 0');
       return;
     }
-    if (isNaN(numDay) || numDay < 1 || numDay > 31) {
-      Alert.alert('Perhatian', 'Tanggal jatuh tempo harus antara 1-31');
+    if (dueDay < 1 || dueDay > 31) {
+      Alert.alert('Perhatian', 'Tanggal jatuh tempo harus antara 1 - 31');
       return;
     }
 
     try {
-      await addMonthlyBill(db, {
-        cashbook_id: cashbookId,
-        name: name.trim(),
-        amount: numAmount,
-        due_day: numDay,
-        category_id: selectedCatId,
-        account_id: selectedAccId,
-      });
+      if (editingBillId) {
+        await updateMonthlyBill(db, editingBillId, {
+          name: name.trim(),
+          amount: numAmount,
+          due_day: dueDay,
+          category_id: selectedCatId,
+          account_id: selectedAccId,
+        });
+      } else {
+        await addMonthlyBill(db, {
+          cashbook_id: cashbookId,
+          name: name.trim(),
+          amount: numAmount,
+          due_day: dueDay,
+          category_id: selectedCatId,
+          account_id: selectedAccId,
+        });
+      }
 
-      setName('');
-      setAmount('');
-      setDueDay('1');
-      setShowAddModal(false);
+      setShowFormModal(false);
       loadData();
     } catch {
-      Alert.alert('Error', 'Gagal menambahkan tagihan');
+      Alert.alert('Error', 'Gagal menyimpan tagihan');
     }
   };
 
@@ -129,7 +162,7 @@ export default function BillsScreen() {
 
     try {
       await payMonthlyBill(db, payingBill.id, currentMonthStr, payAccId, getNowFull());
-      Alert.alert('Sukses', `Tagihan "${payingBill.name}" bulan ini berhasil dibayar dan dicatat sebagai pengeluaran!`);
+      Alert.alert('Sukses', `Tagihan "${payingBill.name}" bulan ini berhasil dibayar dan dicatat sebagai pengeluaran.`);
       setPayingBill(null);
       loadData();
     } catch {
@@ -151,6 +184,9 @@ export default function BillsScreen() {
     ]);
   };
 
+  // Helper date string untuk DatePickerModal
+  const pickerDateValue = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(dueDay).padStart(2, '0')}`;
+
   return (
     <View style={[styles.container, { backgroundColor: palette.canvas }]}>
       <StatusBar style={isDarkMode ? 'light' : 'dark'} />
@@ -158,31 +194,37 @@ export default function BillsScreen() {
 
       {/* Top Header */}
       <View style={[styles.header, { backgroundColor: palette.card, borderBottomColor: palette.border }]}>
-        <View style={styles.headerLeft}>
-          <Pressable
-            style={({ pressed }) => [styles.backBtn, { backgroundColor: palette.cardMuted }, pressed && { opacity: 0.7 }]}
-            onPress={() => router.back()}
-          >
-            <BackArrowIcon color={palette.ink} size={18} />
-          </Pressable>
-          <View>
-            <Text style={[styles.headerSub, { color: palette.primary }]}>{activeCashbook?.name ?? 'Catatan'}</Text>
-            <Text style={[styles.headerTitle, { color: palette.ink }]}>Tagihan Rutin Bulanan</Text>
+        <View style={[styles.headerInner, isTablet && { maxWidth: 840, width: '100%', alignSelf: 'center' }]}>
+          <View style={styles.headerLeft}>
+            <Pressable
+              style={({ pressed }) => [styles.backBtn, { backgroundColor: palette.cardMuted }, pressed && { opacity: 0.7 }]}
+              onPress={() => router.back()}
+            >
+              <BackArrowIcon color={palette.ink} size={18} />
+            </Pressable>
+            <View>
+              <Text style={[styles.headerSub, { color: palette.primary }]}>{activeCashbook?.name ?? 'Catatan'}</Text>
+              <Text style={[styles.headerTitle, { color: palette.ink }]}>Tagihan Rutin Bulanan</Text>
+            </View>
           </View>
-        </View>
 
-        <Pressable
-          style={[styles.addTopBtn, { backgroundColor: palette.primary }]}
-          onPress={() => setShowAddModal(true)}
-        >
-          <Text style={styles.addTopBtnText}>+ Tambah</Text>
-        </Pressable>
+          <Pressable
+            style={[styles.addTopBtn, { backgroundColor: palette.primary }]}
+            onPress={openAddModal}
+          >
+            <Text style={styles.addTopBtnText}>+ Tambah</Text>
+          </Pressable>
+        </View>
       </View>
 
       <FlatList
         data={bills}
         keyExtractor={(item) => item.id.toString()}
-        contentContainerStyle={styles.listContent}
+        contentContainerStyle={[
+          styles.listContent,
+          isTablet && { maxWidth: 840, width: '100%', alignSelf: 'center' },
+          { flexGrow: 1 },
+        ]}
         showsVerticalScrollIndicator={false}
         ListEmptyComponent={
           <View style={styles.emptyWrap}>
@@ -193,7 +235,7 @@ export default function BillsScreen() {
             </Text>
             <Pressable
               style={[styles.emptyBtn, { backgroundColor: palette.primary }]}
-              onPress={() => setShowAddModal(true)}
+              onPress={openAddModal}
             >
               <Text style={styles.emptyBtnText}>+ Buat Tagihan Pertama</Text>
             </Pressable>
@@ -245,11 +287,26 @@ export default function BillsScreen() {
                 </View>
               </View>
 
-              {/* Action Buttons */}
+              {/* Action Buttons: Edit, Hapus, Bayar */}
               <View style={[styles.cardBottomRow, { borderTopColor: palette.borderSubtle }]}>
-                <Pressable onPress={() => handleDelete(item)}>
-                  <Text style={[styles.deleteText, { color: palette.inkMuted }]}>Hapus</Text>
-                </Pressable>
+                <View style={styles.cardLeftActions}>
+                  <Pressable
+                    style={({ pressed }) => [styles.actionIconBtn, { backgroundColor: palette.cardMuted }, pressed && { opacity: 0.7 }]}
+                    onPress={() => openEditModal(item)}
+                    hitSlop={6}
+                  >
+                    <EditActionIcon color={palette.primary} size={15} />
+                    <Text style={[styles.actionBtnLabel, { color: palette.primary }]}>Edit</Text>
+                  </Pressable>
+
+                  <Pressable
+                    style={({ pressed }) => [styles.actionIconBtn, { backgroundColor: palette.cardMuted }, pressed && { opacity: 0.7 }]}
+                    onPress={() => handleDelete(item)}
+                    hitSlop={6}
+                  >
+                    <Text style={[styles.actionBtnLabel, { color: palette.expense }]}>Hapus</Text>
+                  </Pressable>
+                </View>
 
                 {!isPaidThisMonth && (
                   <Pressable
@@ -263,13 +320,20 @@ export default function BillsScreen() {
             </View>
           );
         }}
+        ListFooterComponent={
+          <View style={styles.footerWrap}>
+            <Text style={[styles.footerText, { color: palette.inkMuted }]}>© 2026 CatatKu</Text>
+          </View>
+        }
       />
 
-      {/* Modal Tambah Tagihan */}
-      <Modal visible={showAddModal} transparent animationType="slide" onRequestClose={() => setShowAddModal(false)}>
+      {/* Modal Tambah / Edit Tagihan */}
+      <Modal visible={showFormModal} transparent animationType="slide" onRequestClose={() => setShowFormModal(false)}>
         <View style={styles.modalOverlay}>
-          <View style={[styles.modalCard, { backgroundColor: palette.card }]}>
-            <Text style={[styles.modalTitle, { color: palette.ink }]}>Jadwal Tagihan Baru</Text>
+          <View style={[styles.modalCard, { backgroundColor: palette.card, borderColor: palette.border }, isTablet && { maxWidth: 520 }]}>
+            <Text style={[styles.modalTitle, { color: palette.ink }]}>
+              {editingBillId ? 'Edit Jadwal Tagihan' : 'Jadwal Tagihan Baru'}
+            </Text>
 
             <Text style={[styles.inputLabel, { color: palette.inkSecondary }]}>Nama Tagihan</Text>
             <TextInput
@@ -287,42 +351,59 @@ export default function BillsScreen() {
               placeholderTextColor={palette.inkMuted}
               keyboardType="numeric"
               value={amount}
-              onChangeText={setAmount}
+              onChangeText={(text) => setAmount(formatNumberThousand(text))}
             />
 
-            <Text style={[styles.inputLabel, { color: palette.inkSecondary }]}>Tanggal Jatuh Tempo Tiap Bulan (1-31)</Text>
-            <TextInput
-              style={[styles.textInput, { backgroundColor: palette.cardMuted, borderColor: palette.border, color: palette.ink }]}
-              placeholder="10"
-              placeholderTextColor={palette.inkMuted}
-              keyboardType="number-pad"
-              maxLength={2}
-              value={dueDay}
-              onChangeText={setDueDay}
-            />
+            <Text style={[styles.inputLabel, { color: palette.inkSecondary }]}>Tanggal Jatuh Tempo Tiap Bulan</Text>
+            <Pressable
+              style={[styles.datePickerTrigger, { backgroundColor: palette.cardMuted, borderColor: palette.border }]}
+              onPress={() => setShowDatePicker(true)}
+            >
+              <Text style={{ fontSize: 16 }}>📅</Text>
+              <Text style={[styles.datePickerTriggerText, { color: palette.ink }]}>
+                Tiap tanggal {dueDay} setiap bulan
+              </Text>
+              <Text style={[styles.datePickerChangeHint, { color: palette.primary }]}>Pilih</Text>
+            </Pressable>
 
             <View style={styles.modalActions}>
               <Pressable
                 style={[styles.cancelModalBtn, { borderColor: palette.border }]}
-                onPress={() => setShowAddModal(false)}
+                onPress={() => setShowFormModal(false)}
               >
                 <Text style={[styles.cancelModalBtnText, { color: palette.inkMuted }]}>Batal</Text>
               </Pressable>
               <Pressable
                 style={[styles.saveModalBtn, { backgroundColor: palette.primary }]}
-                onPress={handleAddBill}
+                onPress={handleSaveBill}
               >
-                <Text style={styles.saveModalBtnText}>Simpan Tagihan</Text>
+                <Text style={styles.saveModalBtnText}>
+                  {editingBillId ? 'Perbarui Tagihan' : 'Simpan Tagihan'}
+                </Text>
               </Pressable>
             </View>
           </View>
         </View>
       </Modal>
 
+      {/* DatePicker Visual Modal */}
+      <DatePickerModal
+        visible={showDatePicker}
+        value={pickerDateValue}
+        onSelect={(newDateStr) => {
+          const parts = newDateStr.split(' ')[0].split('-');
+          if (parts.length >= 3) {
+            const pickedDay = parseInt(parts[2], 10);
+            if (!isNaN(pickedDay)) setDueDay(pickedDay);
+          }
+        }}
+        onClose={() => setShowDatePicker(false)}
+      />
+
       {/* Modal Konfirmasi Pembayaran */}
       <Modal visible={!!payingBill} transparent animationType="fade" onRequestClose={() => setPayingBill(null)}>
         <View style={styles.modalOverlay}>
-          <View style={[styles.modalCard, { backgroundColor: palette.card }]}>
+          <View style={[styles.modalCard, { backgroundColor: palette.card, borderColor: palette.border }, isTablet && { maxWidth: 520 }]}>
             <Text style={[styles.modalTitle, { color: palette.ink }]}>Bayar Tagihan</Text>
             <Text style={[styles.confirmSubtitle, { color: palette.inkMuted }]}>
               {payingBill?.name} • Periode {currentMonthStr}
@@ -388,10 +469,12 @@ const styles = StyleSheet.create({
     paddingTop: 50,
     paddingHorizontal: 20,
     paddingBottom: 16,
+    borderBottomWidth: 1,
+  },
+  headerInner: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    borderBottomWidth: 1,
   },
   headerLeft: {
     flexDirection: 'row',
@@ -481,9 +564,22 @@ const styles = StyleSheet.create({
     paddingTop: 10,
     borderTopWidth: 1,
   },
-  deleteText: {
-    fontFamily: FONTS.sansMedium,
-    fontSize: 12,
+  cardLeftActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  actionIconBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 8,
+  },
+  actionBtnLabel: {
+    fontFamily: FONTS.sansBold,
+    fontSize: 11,
   },
   payBtn: {
     paddingHorizontal: 14,
@@ -511,8 +607,8 @@ const styles = StyleSheet.create({
     fontFamily: FONTS.sansRegular,
     fontSize: 13,
     textAlign: 'center',
-    marginBottom: 20,
     lineHeight: 18,
+    marginBottom: 20,
   },
   emptyBtn: {
     paddingHorizontal: 18,
@@ -526,70 +622,90 @@ const styles = StyleSheet.create({
   },
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.6)',
+    backgroundColor: 'rgba(0,0,0,0.55)',
     justifyContent: 'center',
+    alignItems: 'center',
     padding: 20,
   },
   modalCard: {
+    width: '100%',
     borderRadius: 22,
-    padding: 20,
+    padding: 22,
+    borderWidth: 1,
   },
   modalTitle: {
     fontFamily: FONTS.serifTitle,
     fontSize: 18,
     fontWeight: '800',
-    marginBottom: 14,
+    marginBottom: 16,
   },
   confirmSubtitle: {
-    fontFamily: FONTS.sansMedium,
+    fontFamily: FONTS.sansRegular,
     fontSize: 13,
-    marginTop: -8,
-    marginBottom: 14,
+    marginTop: -10,
+    marginBottom: 16,
+  },
+  inputLabel: {
+    fontFamily: FONTS.sansBold,
+    fontSize: 12,
+    marginBottom: 6,
+    marginTop: 10,
+  },
+  textInput: {
+    height: 48,
+    borderRadius: 12,
+    borderWidth: 1,
+    paddingHorizontal: 14,
+    fontFamily: FONTS.sansMedium,
+    fontSize: 14,
+  },
+  datePickerTrigger: {
+    height: 48,
+    borderRadius: 12,
+    borderWidth: 1,
+    paddingHorizontal: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  datePickerTriggerText: {
+    fontFamily: FONTS.sansBold,
+    fontSize: 13,
+    flex: 1,
+    marginLeft: 8,
+  },
+  datePickerChangeHint: {
+    fontFamily: FONTS.sansBold,
+    fontSize: 12,
   },
   amountPreviewBox: {
     padding: 14,
-    borderRadius: 14,
-    alignItems: 'center',
+    borderRadius: 12,
     marginBottom: 14,
+    alignItems: 'center',
   },
   amountPreviewLabel: {
     fontFamily: FONTS.sansMedium,
-    fontSize: 11,
+    fontSize: 12,
+    marginBottom: 4,
   },
   amountPreviewVal: {
     fontFamily: FONTS.sansBold,
-    fontSize: 20,
+    fontSize: 22,
     fontWeight: '800',
-    marginTop: 2,
-  },
-  inputLabel: {
-    fontFamily: FONTS.sansMedium,
-    fontSize: 12,
-    fontWeight: '700',
-    marginBottom: 6,
-  },
-  textInput: {
-    borderRadius: 12,
-    borderWidth: 1,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    fontFamily: FONTS.sansMedium,
-    fontSize: 13,
-    marginBottom: 14,
   },
   accScroll: {
-    flexDirection: 'row',
-    marginBottom: 16,
+    marginVertical: 10,
   },
   accPill: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
+    gap: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
     borderRadius: 12,
     borderWidth: 1,
-    marginRight: 8,
+    marginRight: 10,
   },
   accPillName: {
     fontFamily: FONTS.sansBold,
@@ -597,33 +713,44 @@ const styles = StyleSheet.create({
   },
   accPillBal: {
     fontFamily: FONTS.sansRegular,
-    fontSize: 10,
+    fontSize: 11,
   },
   modalActions: {
     flexDirection: 'row',
     gap: 10,
-    marginTop: 6,
+    marginTop: 22,
   },
   cancelModalBtn: {
     flex: 1,
-    paddingVertical: 12,
+    height: 46,
     borderRadius: 12,
     borderWidth: 1,
+    justifyContent: 'center',
     alignItems: 'center',
   },
   cancelModalBtnText: {
-    fontFamily: FONTS.sansMedium,
+    fontFamily: FONTS.sansBold,
     fontSize: 13,
   },
   saveModalBtn: {
     flex: 2,
-    paddingVertical: 12,
+    height: 46,
     borderRadius: 12,
+    justifyContent: 'center',
     alignItems: 'center',
   },
   saveModalBtnText: {
     fontFamily: FONTS.sansBold,
     fontSize: 13,
     color: '#FAF8F5',
+  },
+  footerWrap: {
+    alignItems: 'center',
+    paddingVertical: 24,
+    marginTop: 'auto',
+  },
+  footerText: {
+    fontFamily: FONTS.sansRegular,
+    fontSize: 12,
   },
 });

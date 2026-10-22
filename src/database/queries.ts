@@ -741,6 +741,30 @@ export async function addDebt(
   return result.lastInsertRowId;
 }
 
+export async function updateDebt(
+  db: SQLiteDatabase,
+  id: number,
+  data: {
+    person_name: string;
+    amount: number;
+    note: string;
+    due_date: string | null;
+    date: string;
+    account_id?: number | null;
+  }
+): Promise<void> {
+  await db.runAsync(
+    'UPDATE debts SET person_name = ?, amount = ?, note = ?, due_date = ?, date = ?, account_id = ? WHERE id = ?',
+    data.person_name,
+    data.amount,
+    data.note,
+    data.due_date,
+    data.date,
+    data.account_id ?? 1,
+    id
+  );
+}
+
 export async function addDebtPayment(
   db: SQLiteDatabase,
   data: { debt_id: number; account_id: number; amount: number; date: string; note: string }
@@ -918,6 +942,31 @@ export async function updateSavingsGoalDeposit(
   });
 }
 
+export async function updateSavingsGoal(
+  db: SQLiteDatabase,
+  id: number,
+  data: {
+    name: string;
+    target_amount: number;
+    target_date: string | null;
+    icon: string;
+    color: string;
+  }
+): Promise<void> {
+  const goal = await db.getFirstAsync<SavingsGoal>('SELECT current_amount FROM savings_goals WHERE id = ?', id);
+  const currentAmount = goal?.current_amount ?? 0;
+  await db.runAsync(
+    'UPDATE savings_goals SET name = ?, target_amount = ?, target_date = ?, icon = ?, color = ?, is_achieved = ? WHERE id = ?',
+    data.name,
+    data.target_amount,
+    data.target_date,
+    data.icon,
+    data.color,
+    currentAmount >= data.target_amount ? 1 : 0,
+    id
+  );
+}
+
 export async function deleteSavingsGoal(db: SQLiteDatabase, id: number): Promise<void> {
   await db.runAsync('DELETE FROM savings_goals WHERE id = ?', id);
 }
@@ -972,6 +1021,32 @@ export async function addRecurringRule(
     data.next_due_date
   );
   return result.lastInsertRowId;
+}
+
+export async function updateRecurringRule(
+  db: SQLiteDatabase,
+  id: number,
+  data: {
+    category_id: number;
+    account_id: number;
+    type: 'income' | 'expense';
+    amount: number;
+    note: string;
+    frequency: 'daily' | 'weekly' | 'monthly';
+    next_due_date: string;
+  }
+): Promise<void> {
+  await db.runAsync(
+    'UPDATE recurring_rules SET category_id = ?, account_id = ?, type = ?, amount = ?, note = ?, frequency = ?, next_due_date = ? WHERE id = ?',
+    data.category_id,
+    data.account_id,
+    data.type,
+    data.amount,
+    data.note,
+    data.frequency,
+    data.next_due_date,
+    id
+  );
 }
 
 export async function toggleRecurringRule(db: SQLiteDatabase, id: number): Promise<void> {
@@ -1093,6 +1168,37 @@ export async function addMonthlyBill(
     data.note ?? ''
   );
   return result.lastInsertRowId;
+}
+
+export async function updateMonthlyBill(
+  db: SQLiteDatabase,
+  id: number,
+  data: {
+    name: string;
+    amount: number;
+    due_day: number;
+    category_id?: number | null;
+    account_id?: number | null;
+    icon?: string;
+    color?: string;
+    note?: string;
+  }
+): Promise<void> {
+  await db.runAsync(`
+    UPDATE monthly_bills
+    SET name = ?, amount = ?, due_day = ?, category_id = ?, account_id = ?, icon = ?, color = ?, note = ?
+    WHERE id = ?
+  `,
+    data.name,
+    data.amount,
+    data.due_day,
+    data.category_id ?? null,
+    data.account_id ?? null,
+    data.icon ?? '📄',
+    data.color ?? '#0F766E',
+    data.note ?? '',
+    id
+  );
 }
 
 export async function payMonthlyBill(

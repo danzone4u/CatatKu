@@ -1,10 +1,21 @@
-import { View, Text, StyleSheet, Pressable, ScrollView, TextInput, Alert, Switch } from 'react-native';
+import {
+  View,
+  Text,
+  StyleSheet,
+  Pressable,
+  ScrollView,
+  TextInput,
+  Alert,
+  Switch,
+  useWindowDimensions,
+} from 'react-native';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useCallback, useState } from 'react';
-import { useFocusEffect, Stack } from 'expo-router';
+import { useFocusEffect, Stack, router } from 'expo-router';
 import {
   getSavingsGoals,
   addSavingsGoal,
+  updateSavingsGoal,
   updateSavingsGoalDeposit,
   deleteSavingsGoal,
   getAccounts,
@@ -12,30 +23,45 @@ import {
   type AccountWithCalculatedBalance,
 } from '../src/database/queries';
 import { useCashbookStore } from '../src/stores/useCashbookStore';
-import { formatRupiah } from '../src/utils/currency';
+import { useThemeStore } from '../src/stores/useThemeStore';
+import { formatRupiah, formatNumberThousand, parseRupiahInput } from '../src/utils/currency';
 import { formatDate } from '../src/utils/date';
-import { PALETTE, FONTS } from '../src/constants/theme';
+import { FONTS } from '../src/constants/theme';
 import { ModernConfirmModal } from '../src/components/ModernConfirmModal';
+import { EditActionIcon, BackArrowIcon } from '../src/components/ActionIcons';
+import DatePickerModal from '../src/components/DatePickerModal';
 
-const GOAL_EMOJIS = ['🎯', '🛵', '🚗', '🏠', '💻', '📱', '✈️', '💍', '🎓', '🏖️'];
-const GOAL_COLORS = ['#2563EB', '#16A34A', '#9333EA', '#EA580C', '#DC2626', '#0D9488'];
+const GOAL_EMOJIS = [
+  '🎯', '🛡️', '🛵', '🚗', '🏠', '💻', '📱', '✈️', '💍', '🎓', '🏖️', '👶', '🏥', '💎',
+];
+
+const GOAL_COLORS = [
+  '#0F766E', '#16A34A', '#2563EB', '#9333EA', '#EA580C', '#DC2626',
+  '#0284C7', '#E11D48', '#D97706', '#059669', '#4F46E5', '#334155',
+];
 
 export default function SavingsGoalsScreen() {
   const db = useSQLiteContext();
+  const { width } = useWindowDimensions();
+  const isTablet = width >= 600;
+  const palette = useThemeStore((s) => s.palette);
+  const isDarkMode = useThemeStore((s) => s.isDarkMode);
   const activeCashbook = useCashbookStore((state) => state.activeCashbook);
   const cashbookId = activeCashbook?.id ?? 1;
 
   const [goals, setGoals] = useState<SavingsGoal[]>([]);
   const [accounts, setAccounts] = useState<AccountWithCalculatedBalance[]>([]);
-  const [showAddForm, setShowAddForm] = useState(false);
+  const [showForm, setShowForm] = useState(false);
+  const [editingGoalId, setEditingGoalId] = useState<number | null>(null);
 
-  // New Goal Form
+  // New / Edit Goal Form
   const [name, setName] = useState('');
   const [targetAmount, setTargetAmount] = useState('');
   const [currentAmount, setCurrentAmount] = useState('');
   const [targetDate, setTargetDate] = useState('');
   const [selectedEmoji, setSelectedEmoji] = useState('🎯');
-  const [selectedColor, setSelectedColor] = useState('#2563EB');
+  const [selectedColor, setSelectedColor] = useState('#0F766E');
+  const [showDatePicker, setShowDatePicker] = useState(false);
 
   // Modal Setor / Tarik Tabungan
   const [activeGoal, setActiveGoal] = useState<SavingsGoal | null>(null);
@@ -65,35 +91,69 @@ export default function SavingsGoalsScreen() {
     }, [loadData])
   );
 
-  async function handleCreateGoal() {
+  const openAddForm = () => {
+    setEditingGoalId(null);
+    setName('');
+    setTargetAmount('');
+    setCurrentAmount('');
+    setTargetDate('');
+    setSelectedEmoji('🎯');
+    setSelectedColor('#0F766E');
+    setShowForm(true);
+  };
+
+  const openEditForm = (g: SavingsGoal) => {
+    setEditingGoalId(g.id);
+    setName(g.name);
+    setTargetAmount(formatNumberThousand(g.target_amount));
+    setCurrentAmount(formatNumberThousand(g.current_amount));
+    setTargetDate(g.target_date || '');
+    setSelectedEmoji(g.icon || '🎯');
+    setSelectedColor(g.color || '#0F766E');
+    setShowForm(true);
+  };
+
+  const applyEmergencyPreset = () => {
+    setName('Dana Darurat');
+    setSelectedEmoji('🛡️');
+    setSelectedColor('#E11D48');
+  };
+
+  async function handleSaveGoal() {
     if (!name.trim()) {
       Alert.alert('Perhatian', 'Nama target impian wajib diisi');
       return;
     }
 
-    const targetNum = parseFloat(targetAmount);
+    const targetNum = parseRupiahInput(targetAmount);
     if (!targetNum || targetNum <= 0) {
       Alert.alert('Perhatian', 'Masukkan nominal target tabungan yang valid');
       return;
     }
 
-    const currentNum = currentAmount ? parseFloat(currentAmount) : 0;
+    const currentNum = parseRupiahInput(currentAmount);
 
-    await addSavingsGoal(db, {
-      cashbook_id: cashbookId,
-      name: name.trim(),
-      target_amount: targetNum,
-      current_amount: currentNum,
-      target_date: targetDate || null,
-      icon: selectedEmoji,
-      color: selectedColor,
-    });
+    if (editingGoalId) {
+      await updateSavingsGoal(db, editingGoalId, {
+        name: name.trim(),
+        target_amount: targetNum,
+        target_date: targetDate || null,
+        icon: selectedEmoji,
+        color: selectedColor,
+      });
+    } else {
+      await addSavingsGoal(db, {
+        cashbook_id: cashbookId,
+        name: name.trim(),
+        target_amount: targetNum,
+        current_amount: currentNum,
+        target_date: targetDate || null,
+        icon: selectedEmoji,
+        color: selectedColor,
+      });
+    }
 
-    setName('');
-    setTargetAmount('');
-    setCurrentAmount('');
-    setTargetDate('');
-    setShowAddForm(false);
+    setShowForm(false);
     loadData();
   }
 
@@ -110,7 +170,7 @@ export default function SavingsGoalsScreen() {
   async function handleConfirmAction() {
     if (!activeGoal) return;
 
-    const num = parseFloat(amountInput);
+    const num = parseRupiahInput(amountInput);
     if (!num || num <= 0) {
       Alert.alert('Perhatian', 'Masukkan nominal yang valid');
       return;
@@ -146,83 +206,140 @@ export default function SavingsGoalsScreen() {
   const totalSavedAll = goals.reduce((sum, g) => sum + g.current_amount, 0);
 
   return (
-    <>
-      <Stack.Screen
-        options={{
-          headerShown: true,
-          title: 'Target Tabungan (Impian)',
-          headerStyle: { backgroundColor: '#FFFFFF' },
-          headerTintColor: '#0F172A',
-          headerTitleStyle: { fontFamily: FONTS.serifTitle, fontSize: 18, fontWeight: '800' },
-        }}
-      />
-      <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-        {/* Banner Total Tabungan */}
-        <View style={styles.summaryVaultCard}>
-          <Text style={styles.vaultLabel}>Total Dana Terkunci di Tabungan</Text>
-          <Text style={styles.vaultAmount}>{formatRupiah(totalSavedAll)}</Text>
-          <Text style={styles.vaultSub}>Tersimpan di {goals.length} target impian</Text>
-        </View>
+    <View style={[styles.container, { backgroundColor: palette.canvas }]}>
+      <Stack.Screen options={{ headerShown: false }} />
 
-        <View style={styles.headerRow}>
-          <Text style={styles.sectionTitle}>Target Impian Saya ({goals.length})</Text>
+      {/* Header */}
+      <View style={[styles.header, { backgroundColor: palette.card, borderBottomColor: palette.border }]}>
+        <View style={[styles.headerInner, isTablet && { maxWidth: 840, width: '100%', alignSelf: 'center' }]}>
+          <View style={styles.headerLeft}>
+            <Pressable
+              style={({ pressed }) => [styles.backBtn, { backgroundColor: palette.cardMuted }, pressed && { opacity: 0.7 }]}
+              onPress={() => router.back()}
+            >
+              <BackArrowIcon color={palette.ink} size={18} />
+            </Pressable>
+            <View>
+              <Text style={[styles.headerSub, { color: palette.primary }]}>{activeCashbook?.name ?? 'Catatan'}</Text>
+              <Text style={[styles.headerTitle, { color: palette.ink }]}>Target Menabung</Text>
+            </View>
+          </View>
+
           <Pressable
-            style={({ pressed }) => [styles.addBtn, pressed && { opacity: 0.8 }]}
-            onPress={() => setShowAddForm(!showAddForm)}
+            style={[styles.addTopBtn, { backgroundColor: palette.primary }]}
+            onPress={openAddForm}
           >
-            <Text style={styles.addBtnText}>{showAddForm ? '✕ Batal' : '+ Target Baru'}</Text>
+            <Text style={styles.addTopBtnText}>+ Target</Text>
           </Pressable>
         </View>
+      </View>
 
-        {/* Add Goal Form */}
-        {showAddForm && (
-          <View style={styles.formCard}>
-            <Text style={styles.formTitle}>Buat Target Tabungan Baru</Text>
+      <ScrollView
+        contentContainerStyle={[
+          styles.content,
+          isTablet && { maxWidth: 840, width: '100%', alignSelf: 'center' },
+          { flexGrow: 1 },
+        ]}
+        showsVerticalScrollIndicator={false}
+      >
+        {/* Banner Total Tabungan */}
+        <View style={[styles.summaryVaultCard, { backgroundColor: palette.card, borderColor: palette.border }]}>
+          <Text style={[styles.vaultLabel, { color: palette.inkMuted }]}>Total Dana Terkunci di Tabungan</Text>
+          <Text style={[styles.vaultAmount, { color: palette.primary }]}>{formatRupiah(totalSavedAll)}</Text>
+          <Text style={[styles.vaultSub, { color: palette.inkSecondary }]}>
+            Tersimpan di {goals.length} target impian
+          </Text>
+        </View>
 
-            <Text style={styles.label}>Nama Impian / Target</Text>
+        {/* Add / Edit Goal Form */}
+        {showForm && (
+          <View style={[styles.formCard, { backgroundColor: palette.card, borderColor: palette.border }]}>
+            <View style={styles.formHeaderRow}>
+              <Text style={[styles.formTitle, { color: palette.ink }]}>
+                {editingGoalId ? 'Edit Target Impian' : 'Buat Target Tabungan Baru'}
+              </Text>
+              <Pressable onPress={() => setShowForm(false)} hitSlop={8}>
+                <Text style={[styles.closeFormText, { color: palette.inkMuted }]}>✕</Text>
+              </Pressable>
+            </View>
+
+            {/* Tombol Preset Dana Darurat */}
+            {!editingGoalId && (
+              <Pressable
+                style={({ pressed }) => [
+                  styles.emergencyPresetBtn,
+                  { backgroundColor: isDarkMode ? '#3B1219' : '#FFE4E6', borderColor: '#E11D48' },
+                  pressed && { opacity: 0.8 },
+                ]}
+                onPress={applyEmergencyPreset}
+              >
+                <Text style={{ fontSize: 16 }}>🛡️</Text>
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.emergencyPresetTitle, { color: '#E11D48' }]}>Pasang Preset "Dana Darurat"</Text>
+                  <Text style={[styles.emergencyPresetDesc, { color: palette.inkMuted }]}>
+                    Otomatis set nama, ikon perisai, dan warna proteksi
+                  </Text>
+                </View>
+              </Pressable>
+            )}
+
+            <Text style={[styles.label, { color: palette.inkSecondary }]}>Nama Impian / Target</Text>
             <TextInput
-              style={styles.input}
-              placeholder="Misal: Beli Laptop Baru, Liburan Bali, DP Motor"
-              placeholderTextColor="#94A3B8"
+              style={[styles.input, { backgroundColor: palette.cardMuted, borderColor: palette.border, color: palette.ink }]}
+              placeholder="Misal: Dana Darurat, Beli Laptop, Liburan"
+              placeholderTextColor={palette.inkMuted}
               value={name}
               onChangeText={setName}
             />
 
-            <Text style={styles.label}>Target Dana (Rp)</Text>
+            <Text style={[styles.label, { color: palette.inkSecondary }]}>Target Dana (Rp)</Text>
             <TextInput
-              style={styles.input}
-              placeholder="Misal: 15000000"
-              placeholderTextColor="#94A3B8"
+              style={[styles.input, { backgroundColor: palette.cardMuted, borderColor: palette.border, color: palette.ink }]}
+              placeholder="0"
+              placeholderTextColor={palette.inkMuted}
               keyboardType="numeric"
               value={targetAmount}
-              onChangeText={setTargetAmount}
+              onChangeText={(text) => setTargetAmount(formatNumberThousand(text))}
             />
 
-            <Text style={styles.label}>Terkumpul Saat Ini (Rp) - Opsional</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="0"
-              placeholderTextColor="#94A3B8"
-              keyboardType="numeric"
-              value={currentAmount}
-              onChangeText={setCurrentAmount}
-            />
+            {!editingGoalId && (
+              <>
+                <Text style={[styles.label, { color: palette.inkSecondary }]}>Terkumpul Saat Ini (Rp) - Opsional</Text>
+                <TextInput
+                  style={[styles.input, { backgroundColor: palette.cardMuted, borderColor: palette.border, color: palette.ink }]}
+                  placeholder="0"
+                  placeholderTextColor={palette.inkMuted}
+                  keyboardType="numeric"
+                  value={currentAmount}
+                  onChangeText={(text) => setCurrentAmount(formatNumberThousand(text))}
+                />
+              </>
+            )}
 
-            <Text style={styles.label}>Target Tercapai (YYYY-MM-DD) - Opsional</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="YYYY-MM-DD"
-              placeholderTextColor="#94A3B8"
-              value={targetDate}
-              onChangeText={setTargetDate}
-            />
+            <Text style={[styles.label, { color: palette.inkSecondary }]}>Tenggat Waktu Target - Opsional</Text>
+            <Pressable
+              style={[styles.dateTrigger, { backgroundColor: palette.cardMuted, borderColor: palette.border }]}
+              onPress={() => setShowDatePicker(true)}
+            >
+              <Text style={{ fontSize: 16 }}>📅</Text>
+              <Text style={[styles.dateTriggerText, { color: palette.ink }]}>
+                {targetDate ? formatDate(targetDate) : 'Pilih Tenggat Tanggal (Bebas)'}
+              </Text>
+              <Text style={[styles.dateChangeHint, { color: palette.primary }]}>
+                {targetDate ? 'Ubah' : 'Pilih'}
+              </Text>
+            </Pressable>
 
-            <Text style={styles.label}>Pilih Ikon Emoji</Text>
+            <Text style={[styles.label, { color: palette.inkSecondary }]}>Pilih Ikon Emoji</Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.pickerRow}>
               {GOAL_EMOJIS.map((emoji) => (
                 <Pressable
                   key={emoji}
-                  style={[styles.emojiBtn, selectedEmoji === emoji && styles.emojiBtnSelected]}
+                  style={[
+                    styles.emojiBtn,
+                    { backgroundColor: palette.cardMuted, borderColor: palette.border },
+                    selectedEmoji === emoji && { borderColor: palette.primary, backgroundColor: isDarkMode ? '#16313B' : '#EAF6F3' },
+                  ]}
                   onPress={() => setSelectedEmoji(emoji)}
                 >
                   <Text style={styles.emojiText}>{emoji}</Text>
@@ -230,8 +347,8 @@ export default function SavingsGoalsScreen() {
               ))}
             </ScrollView>
 
-            <Text style={styles.label}>Pilih Warna Tema</Text>
-            <View style={styles.colorRow}>
+            <Text style={[styles.label, { color: palette.inkSecondary }]}>Pilih Warna Tema</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.colorRow}>
               {GOAL_COLORS.map((col) => (
                 <Pressable
                   key={col}
@@ -239,56 +356,71 @@ export default function SavingsGoalsScreen() {
                   onPress={() => setSelectedColor(col)}
                 />
               ))}
-            </View>
+            </ScrollView>
 
-            <Pressable
-              style={({ pressed }) => [styles.saveBtn, pressed && { opacity: 0.85 }]}
-              onPress={handleCreateGoal}
-            >
-              <Text style={styles.saveBtnText}>Simpan Target Impian</Text>
-            </Pressable>
+            <View style={styles.formActionRow}>
+              <Pressable
+                style={[styles.cancelFormBtn, { borderColor: palette.border }]}
+                onPress={() => setShowForm(false)}
+              >
+                <Text style={[styles.cancelFormBtnText, { color: palette.inkMuted }]}>Batal</Text>
+              </Pressable>
+
+              <Pressable
+                style={[styles.saveBtn, { backgroundColor: palette.primary }]}
+                onPress={handleSaveGoal}
+              >
+                <Text style={styles.saveBtnText}>
+                  {editingGoalId ? 'Perbarui Target' : 'Simpan Target'}
+                </Text>
+              </Pressable>
+            </View>
           </View>
         )}
 
-        {/* Form Modal Setor / Tarik Tabungan */}
+        {/* Setor / Tarik Tabungan Block */}
         {activeGoal && (
-          <View style={styles.depositBox}>
+          <View style={[styles.depositBox, { backgroundColor: palette.card, borderColor: palette.border }]}>
             <View style={styles.depositHeader}>
-              <Text style={styles.depositTitle}>
+              <Text style={[styles.depositTitle, { color: palette.ink }]}>
                 {actionType === 'deposit' ? '🎯 Setor ke Tabungan' : '💸 Tarik ke Dompet'}
               </Text>
-              <Text style={styles.depositTargetName}>{activeGoal.name}</Text>
+              <Text style={[styles.depositTargetName, { color: palette.primary }]}>{activeGoal.name}</Text>
             </View>
 
-            <Text style={styles.label}>Nominal (Rp)</Text>
+            <Text style={[styles.label, { color: palette.inkSecondary }]}>Nominal (Rp)</Text>
             <TextInput
-              style={styles.input}
-              placeholder="Masukkan nominal"
-              placeholderTextColor="#94A3B8"
+              style={[styles.input, { backgroundColor: palette.cardMuted, borderColor: palette.border, color: palette.ink }]}
+              placeholder="0"
+              placeholderTextColor={palette.inkMuted}
               keyboardType="numeric"
               value={amountInput}
-              onChangeText={setAmountInput}
+              onChangeText={(text) => setAmountInput(formatNumberThousand(text))}
               autoFocus
             />
 
             {/* Toggle Potong / Hubungkan Saldo Dompet */}
-            <View style={styles.walletToggleRow}>
+            <View style={[styles.walletToggleRow, { borderTopColor: palette.borderSubtle }]}>
               <View style={{ flex: 1, paddingRight: 8 }}>
-                <Text style={styles.walletToggleTitle}>
+                <Text style={[styles.walletToggleTitle, { color: palette.ink }]}>
                   {actionType === 'deposit' ? 'Potong dari saldo dompet' : 'Kembalikan ke saldo dompet'}
                 </Text>
-                <Text style={styles.walletToggleDesc}>
+                <Text style={[styles.walletToggleDesc, { color: palette.inkMuted }]}>
                   {actionType === 'deposit'
-                    ? 'Saldo rekening berkurang, tercatat di riwayat mutasi.'
+                    ? 'Saldo rekening berkurang, tercatat di mutasi.'
                     : 'Saldo rekening bertambah kembali dari tabungan.'}
                 </Text>
               </View>
-              <Switch value={deductWallet} onValueChange={setDeductWallet} />
+              <Switch
+                value={deductWallet}
+                onValueChange={setDeductWallet}
+                trackColor={{ false: palette.border, true: palette.primary }}
+              />
             </View>
 
             {deductWallet && accounts.length > 0 && (
               <View style={styles.accountSelectBlock}>
-                <Text style={styles.label}>
+                <Text style={[styles.label, { color: palette.inkSecondary }]}>
                   {actionType === 'deposit' ? 'Pilih Dompet Sumber:' : 'Pilih Dompet Tujuan:'}
                 </Text>
                 <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginVertical: 4 }}>
@@ -297,11 +429,12 @@ export default function SavingsGoalsScreen() {
                       key={acc.id}
                       style={[
                         styles.accChip,
-                        selectedAccountId === acc.id && styles.accChipActive,
+                        { backgroundColor: palette.cardMuted, borderColor: palette.border },
+                        selectedAccountId === acc.id && { borderColor: palette.primary, backgroundColor: isDarkMode ? '#16313B' : '#EAF6F3' },
                       ]}
                       onPress={() => setSelectedAccountId(acc.id)}
                     >
-                      <Text style={styles.accChipText}>
+                      <Text style={[styles.accChipText, { color: palette.ink }]}>
                         {acc.icon} {acc.name} ({formatRupiah(acc.calculated_balance)})
                       </Text>
                     </Pressable>
@@ -312,22 +445,22 @@ export default function SavingsGoalsScreen() {
 
             <View style={styles.depositBtnRow}>
               <Pressable
-                style={[styles.depositBtn, { backgroundColor: '#E2E8F0' }]}
+                style={[styles.depositBtn, { backgroundColor: palette.cardMuted, borderColor: palette.border }]}
                 onPress={() => {
                   setActiveGoal(null);
                   setAmountInput('');
                 }}
               >
-                <Text style={{ fontFamily: FONTS.sansBold, fontWeight: '700', color: '#475569' }}>Batal</Text>
+                <Text style={{ fontFamily: FONTS.sansBold, color: palette.inkMuted }}>Batal</Text>
               </Pressable>
               <Pressable
                 style={[
                   styles.depositBtn,
-                  { backgroundColor: actionType === 'deposit' ? PALETTE.primary : '#EA580C' },
+                  { backgroundColor: actionType === 'deposit' ? palette.primary : '#EA580C' },
                 ]}
                 onPress={handleConfirmAction}
               >
-                <Text style={{ fontFamily: FONTS.sansBold, fontWeight: '700', color: '#FFFFFF' }}>
+                <Text style={{ fontFamily: FONTS.sansBold, color: '#FFFFFF' }}>
                   {actionType === 'deposit' ? 'Konfirmasi Setor' : 'Konfirmasi Tarik'}
                 </Text>
               </Pressable>
@@ -335,9 +468,19 @@ export default function SavingsGoalsScreen() {
           </View>
         )}
 
-        {/* Goals List */}
+        {/* Goals List Header */}
+        <View style={styles.headerRow}>
+          <Text style={[styles.sectionTitle, { color: palette.ink }]}>Target Impian Saya ({goals.length})</Text>
+        </View>
+
         {goals.length === 0 ? (
-          <Text style={styles.emptyText}>Belum ada target impian yang dibuat. Mulai buat target sekarang!</Text>
+          <View style={styles.emptyWrap}>
+            <Text style={styles.emptyIcon}>🎯</Text>
+            <Text style={[styles.emptyTitle, { color: palette.ink }]}>Belum Ada Target</Text>
+            <Text style={[styles.emptySub, { color: palette.inkMuted }]}>
+              Mulai buat target impian atau alokasi pos dana darurat sekarang!
+            </Text>
+          </View>
         ) : (
           goals.map((g) => {
             const ratio = g.target_amount > 0 ? Math.min(g.current_amount / g.target_amount, 1) : 0;
@@ -347,14 +490,17 @@ export default function SavingsGoalsScreen() {
             return (
               <View
                 key={g.id}
-                style={[styles.goalCard, { borderLeftColor: g.color }]}
+                style={[
+                  styles.goalCard,
+                  { backgroundColor: palette.card, borderColor: palette.border, borderLeftColor: g.color },
+                ]}
               >
                 <View style={styles.goalTop}>
                   <View style={styles.goalLeft}>
                     <Text style={styles.goalIcon}>{g.icon}</Text>
                     <View style={{ flex: 1 }}>
                       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                        <Text style={styles.goalName}>{g.name}</Text>
+                        <Text style={[styles.goalName, { color: palette.ink }]}>{g.name}</Text>
                         {isDone && (
                           <View style={styles.doneBadge}>
                             <Text style={styles.doneText}>TERCAPAI 🎉</Text>
@@ -362,34 +508,47 @@ export default function SavingsGoalsScreen() {
                         )}
                       </View>
                       {g.target_date && (
-                        <Text style={styles.goalDate}>Target: {formatDate(g.target_date)}</Text>
+                        <Text style={[styles.goalDate, { color: palette.inkMuted }]}>
+                          Target: {formatDate(g.target_date)}
+                        </Text>
                       )}
                     </View>
                   </View>
 
                   <View style={styles.goalRightActions}>
-                    <Text style={[styles.percentText, { color: isDone ? '#16A34A' : g.color }]}>{percent}%</Text>
+                    <Text style={[styles.percentText, { color: isDone ? palette.primary : g.color }]}>
+                      {percent}%
+                    </Text>
                     <Pressable
                       hitSlop={8}
-                      style={({ pressed }) => [styles.deleteGoalBtn, pressed && { opacity: 0.6 }]}
+                      style={({ pressed }) => [styles.actionSmallBtn, { backgroundColor: palette.cardMuted }, pressed && { opacity: 0.6 }]}
+                      onPress={() => openEditForm(g)}
+                    >
+                      <EditActionIcon color={palette.primary} size={15} />
+                    </Pressable>
+                    <Pressable
+                      hitSlop={8}
+                      style={({ pressed }) => [styles.actionSmallBtn, { backgroundColor: palette.cardMuted }, pressed && { opacity: 0.6 }]}
                       onPress={() => handleDeleteGoal(g.id, g.name, g.current_amount)}
                     >
-                      <Text style={styles.deleteGoalText}>🗑️</Text>
+                      <Text style={{ fontSize: 13 }}>🗑️</Text>
                     </Pressable>
                   </View>
                 </View>
 
                 {/* Progress Bar */}
-                <View style={styles.progressBar}>
+                <View style={[styles.progressBar, { backgroundColor: palette.cardMuted }]}>
                   <View style={[styles.progressFill, { width: `${ratio * 100}%`, backgroundColor: g.color }]} />
                 </View>
 
                 <View style={styles.goalBottom}>
                   <View>
-                    <Text style={styles.amountLabel}>Terkumpul</Text>
-                    <Text style={styles.amountValue}>
+                    <Text style={[styles.amountLabel, { color: palette.inkMuted }]}>Terkumpul</Text>
+                    <Text style={[styles.amountValue, { color: palette.ink }]}>
                       {formatRupiah(g.current_amount)}{' '}
-                      <Text style={styles.targetTotal}>/ {formatRupiah(g.target_amount)}</Text>
+                      <Text style={[styles.targetTotal, { color: palette.inkMuted }]}>
+                        / {formatRupiah(g.target_amount)}
+                      </Text>
                     </Text>
                   </View>
 
@@ -404,7 +563,7 @@ export default function SavingsGoalsScreen() {
                     )}
                     {!isDone && (
                       <Pressable
-                        style={({ pressed }) => [styles.btnDeposit, pressed && { opacity: 0.8 }]}
+                        style={({ pressed }) => [styles.btnDeposit, { backgroundColor: palette.primary }, pressed && { opacity: 0.8 }]}
                         onPress={() => openActionModal(g, 'deposit')}
                       >
                         <Text style={styles.btnDepositText}>+ Setor</Text>
@@ -416,9 +575,24 @@ export default function SavingsGoalsScreen() {
             );
           })
         )}
+
+        {/* Footer Copyright */}
+        <View style={styles.footerWrap}>
+          <Text style={[styles.footerText, { color: palette.inkMuted }]}>© 2026 CatatKu</Text>
+        </View>
       </ScrollView>
 
-      {/* Modern Confirm Modal Hapus Target Tabungan */}
+      {/* DatePicker Visual Modal */}
+      <DatePickerModal
+        visible={showDatePicker}
+        value={targetDate || new Date().toISOString().slice(0, 10)}
+        onSelect={(newDateStr) => {
+          setTargetDate(newDateStr.split(' ')[0]);
+        }}
+        onClose={() => setShowDatePicker(false)}
+      />
+
+      {/* Modern Confirm Modal Hapus */}
       <ModernConfirmModal
         visible={!!deleteTarget}
         type="danger"
@@ -426,7 +600,7 @@ export default function SavingsGoalsScreen() {
         title="Hapus Target Impian"
         message={`Hapus target "${deleteTarget?.name}"? ${
           (deleteTarget?.current ?? 0) > 0
-            ? `Dana terkumpul ${formatRupiah(deleteTarget?.current ?? 0)} tetap aman tercatat di riwayat mutasi.`
+            ? `Dana terkumpul ${formatRupiah(deleteTarget?.current ?? 0)} tetap aman tercatat di mutasi.`
             : ''
         }`}
         cancelText="Batal"
@@ -434,185 +608,415 @@ export default function SavingsGoalsScreen() {
         onCancel={() => setDeleteTarget(null)}
         onConfirm={confirmDeleteGoal}
       />
-    </>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#F8FAFC' },
-  content: { padding: 20, paddingBottom: 40 },
-  summaryVaultCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 18,
-    padding: 18,
-    marginBottom: 16,
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-    ...PALETTE.shadowLight,
+  container: { flex: 1 },
+  header: {
+    paddingTop: 50,
+    paddingHorizontal: 20,
+    paddingBottom: 16,
+    borderBottomWidth: 1,
   },
-  vaultLabel: {
-    fontFamily: FONTS.sansBold,
-    fontSize: 11,
-    color: '#64748B',
-    textTransform: 'uppercase',
-    letterSpacing: 0.6,
-  },
-  vaultAmount: {
-    fontFamily: FONTS.serifTitle,
-    fontSize: 26,
-    fontWeight: '800',
-    color: PALETTE.primary,
-    marginVertical: 4,
-  },
-  vaultSub: {
-    fontFamily: FONTS.sansMedium,
-    fontSize: 11,
-    color: '#94A3B8',
-  },
-  headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
-  sectionTitle: { fontFamily: FONTS.serifTitle, fontSize: 16, fontWeight: '800', color: '#0F172A' },
-  addBtn: {
-    backgroundColor: '#EAF6F3',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 12,
-  },
-  addBtnText: { fontFamily: FONTS.sansBold, fontSize: 12, fontWeight: '700', color: PALETTE.primary },
-  formCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 16,
-    padding: 16,
-    marginBottom: 16,
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-  },
-  formTitle: { fontFamily: FONTS.serifTitle, fontSize: 15, fontWeight: '800', color: '#0F172A', marginBottom: 10 },
-  label: { fontFamily: FONTS.sansBold, fontSize: 12, fontWeight: '700', color: '#64748B', marginTop: 8, marginBottom: 6 },
-  input: {
-    backgroundColor: '#F8FAFC',
-    borderRadius: 12,
-    paddingHorizontal: 14,
-    paddingVertical: 11,
-    fontSize: 14,
-    color: '#0F172A',
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-  },
-  pickerRow: { flexDirection: 'row', marginBottom: 4 },
-  emojiBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 10,
-    backgroundColor: '#F8FAFC',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 8,
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-  },
-  emojiBtnSelected: { backgroundColor: '#DBEAFE', borderColor: '#2563EB', borderWidth: 2 },
-  emojiText: { fontSize: 20 },
-  colorRow: { flexDirection: 'row', gap: 10, marginVertical: 4 },
-  colorDot: { width: 32, height: 32, borderRadius: 16 },
-  colorDotSelected: { borderWidth: 3, borderColor: '#0F172A' },
-  saveBtn: {
-    backgroundColor: PALETTE.primary,
-    borderRadius: 12,
-    paddingVertical: 13,
-    alignItems: 'center',
-    marginTop: 14,
-  },
-  saveBtnText: { fontFamily: FONTS.sansBold, color: '#FFFFFF', fontSize: 14, fontWeight: '700' },
-  depositBox: {
-    backgroundColor: '#F0FDF4',
-    padding: 16,
-    borderRadius: 16,
-    marginBottom: 16,
-    borderWidth: 1,
-    borderColor: '#BBF7D0',
-    ...PALETTE.shadowLight,
-  },
-  depositHeader: { marginBottom: 4 },
-  depositTitle: { fontFamily: FONTS.serifTitle, fontSize: 15, fontWeight: '800', color: '#166534' },
-  depositTargetName: { fontFamily: FONTS.sansMedium, fontSize: 12, color: '#15803D' },
-  walletToggleRow: {
+  headerInner: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginTop: 12,
-    paddingTop: 10,
-    borderTopWidth: 1,
-    borderTopColor: '#DCFCE7',
   },
-  walletToggleTitle: { fontFamily: FONTS.sansBold, fontSize: 12, fontWeight: '700', color: '#166534' },
-  walletToggleDesc: { fontFamily: FONTS.sansRegular, fontSize: 10, color: '#15803D', marginTop: 1 },
-  accountSelectBlock: { marginTop: 8 },
-  accChip: {
-    backgroundColor: '#FFFFFF',
-    borderWidth: 1,
-    borderColor: '#BBF7D0',
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 10,
-    marginRight: 8,
+  headerLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
   },
-  accChipActive: {
-    backgroundColor: '#DCFCE7',
-    borderColor: PALETTE.primary,
-    borderWidth: 2,
-  },
-  accChipText: { fontFamily: FONTS.sansBold, fontSize: 11, color: '#166534', fontWeight: '700' },
-  depositBtnRow: { flexDirection: 'row', gap: 10, marginTop: 14 },
-  depositBtn: { flex: 1, paddingVertical: 12, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
-  emptyText: { textAlign: 'center', color: '#94A3B8', marginTop: 16 },
-  goalCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 16,
-    padding: 16,
-    marginBottom: 12,
-    borderLeftWidth: 5,
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-    ...PALETTE.shadowLight,
-  },
-  goalTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 },
-  goalLeft: { flexDirection: 'row', alignItems: 'center', flex: 1 },
-  goalIcon: { fontSize: 24, marginRight: 10 },
-  goalName: { fontFamily: FONTS.serifTitle, fontSize: 15, fontWeight: '700', color: '#0F172A' },
-  doneBadge: { backgroundColor: '#DCFCE7', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 },
-  doneText: { fontSize: 10, fontWeight: '800', color: '#16A34A' },
-  goalDate: { fontFamily: FONTS.sansRegular, fontSize: 11, color: '#64748B', marginTop: 2 },
-  goalRightActions: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  deleteGoalBtn: {
-    padding: 4,
-    borderRadius: 8,
-    backgroundColor: '#FEE2E2',
+  backBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 12,
     justifyContent: 'center',
     alignItems: 'center',
   },
-  deleteGoalText: { fontSize: 12 },
-  percentText: { fontFamily: FONTS.sansBold, fontSize: 16, fontWeight: '800' },
-  progressBar: { height: 7, backgroundColor: '#E2E8F0', borderRadius: 4, overflow: 'hidden', marginBottom: 12 },
-  progressFill: { height: '100%', borderRadius: 4 },
-  goalBottom: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  amountLabel: { fontFamily: FONTS.sansMedium, fontSize: 11, color: '#64748B' },
-  amountValue: { fontFamily: FONTS.serifTitle, fontSize: 15, fontWeight: '800', color: '#0F172A', marginTop: 2 },
-  targetTotal: { fontFamily: FONTS.sansRegular, fontSize: 11, color: '#94A3B8', fontWeight: '500' },
-  goalBtnGroup: { flexDirection: 'row', gap: 6 },
-  btnWithdraw: {
-    backgroundColor: '#F1F5F9',
-    borderWidth: 1,
-    borderColor: '#CBD5E1',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 10,
+  headerSub: {
+    fontFamily: FONTS.sansBold,
+    fontSize: 11,
+    textTransform: 'uppercase',
   },
-  btnWithdrawText: { fontFamily: FONTS.sansBold, color: '#475569', fontSize: 12, fontWeight: '700' },
-  btnDeposit: {
-    backgroundColor: PALETTE.primary,
+  headerTitle: {
+    fontFamily: FONTS.serifTitle,
+    fontSize: 18,
+    fontWeight: '800',
+  },
+  addTopBtn: {
     paddingHorizontal: 14,
     paddingVertical: 8,
     borderRadius: 10,
   },
-  btnDepositText: { fontFamily: FONTS.sansBold, color: '#FFFFFF', fontSize: 12, fontWeight: '700' },
+  addTopBtnText: {
+    fontFamily: FONTS.sansBold,
+    fontSize: 12,
+    color: '#FAF8F5',
+  },
+  content: {
+    padding: 16,
+    gap: 12,
+  },
+  summaryVaultCard: {
+    padding: 18,
+    borderRadius: 20,
+    borderWidth: 1,
+    marginBottom: 4,
+  },
+  vaultLabel: {
+    fontFamily: FONTS.sansMedium,
+    fontSize: 12,
+    marginBottom: 4,
+  },
+  vaultAmount: {
+    fontFamily: FONTS.sansBold,
+    fontSize: 26,
+    fontWeight: '800',
+    marginBottom: 4,
+  },
+  vaultSub: {
+    fontFamily: FONTS.sansRegular,
+    fontSize: 12,
+  },
+  headerRow: {
+    marginTop: 8,
+    marginBottom: 2,
+  },
+  sectionTitle: {
+    fontFamily: FONTS.serifTitle,
+    fontSize: 16,
+    fontWeight: '800',
+  },
+  formCard: {
+    padding: 18,
+    borderRadius: 20,
+    borderWidth: 1,
+    marginBottom: 10,
+  },
+  formHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  formTitle: {
+    fontFamily: FONTS.serifTitle,
+    fontSize: 16,
+    fontWeight: '800',
+  },
+  closeFormText: {
+    fontSize: 16,
+    fontFamily: FONTS.sansBold,
+    padding: 4,
+  },
+  emergencyPresetBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    padding: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    marginBottom: 12,
+  },
+  emergencyPresetTitle: {
+    fontFamily: FONTS.sansBold,
+    fontSize: 12,
+  },
+  emergencyPresetDesc: {
+    fontFamily: FONTS.sansRegular,
+    fontSize: 11,
+    marginTop: 1,
+  },
+  label: {
+    fontFamily: FONTS.sansBold,
+    fontSize: 12,
+    marginBottom: 6,
+    marginTop: 8,
+  },
+  input: {
+    height: 48,
+    borderRadius: 12,
+    borderWidth: 1,
+    paddingHorizontal: 14,
+    fontFamily: FONTS.sansMedium,
+    fontSize: 14,
+  },
+  dateTrigger: {
+    height: 48,
+    borderRadius: 12,
+    borderWidth: 1,
+    paddingHorizontal: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  dateTriggerText: {
+    fontFamily: FONTS.sansBold,
+    fontSize: 13,
+    flex: 1,
+    marginLeft: 8,
+  },
+  dateChangeHint: {
+    fontFamily: FONTS.sansBold,
+    fontSize: 12,
+  },
+  pickerRow: {
+    flexDirection: 'row',
+    marginBottom: 6,
+  },
+  emojiBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    borderWidth: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 8,
+  },
+  emojiText: { fontSize: 20 },
+  colorRow: {
+    flexDirection: 'row',
+    marginBottom: 14,
+  },
+  colorDot: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    marginRight: 8,
+  },
+  colorDotSelected: {
+    borderWidth: 3,
+    borderColor: '#FFFFFF',
+    transform: [{ scale: 1.15 }],
+  },
+  formActionRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 10,
+  },
+  cancelFormBtn: {
+    flex: 1,
+    height: 46,
+    borderRadius: 12,
+    borderWidth: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  cancelFormBtnText: {
+    fontFamily: FONTS.sansBold,
+    fontSize: 13,
+  },
+  saveBtn: {
+    flex: 2,
+    height: 46,
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  saveBtnText: {
+    fontFamily: FONTS.sansBold,
+    fontSize: 14,
+    color: '#FAF8F5',
+  },
+  depositBox: {
+    padding: 18,
+    borderRadius: 20,
+    borderWidth: 1,
+    marginBottom: 10,
+  },
+  depositHeader: {
+    marginBottom: 8,
+  },
+  depositTitle: {
+    fontFamily: FONTS.serifTitle,
+    fontSize: 16,
+    fontWeight: '800',
+  },
+  depositTargetName: {
+    fontFamily: FONTS.sansBold,
+    fontSize: 13,
+    marginTop: 2,
+  },
+  walletToggleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 12,
+    borderTopWidth: 1,
+    marginTop: 10,
+  },
+  walletToggleTitle: {
+    fontFamily: FONTS.sansBold,
+    fontSize: 12,
+  },
+  walletToggleDesc: {
+    fontFamily: FONTS.sansRegular,
+    fontSize: 11,
+    marginTop: 2,
+  },
+  accountSelectBlock: {
+    marginBottom: 10,
+  },
+  accChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 10,
+    borderWidth: 1,
+    marginRight: 8,
+  },
+  accChipText: {
+    fontFamily: FONTS.sansMedium,
+    fontSize: 12,
+  },
+  depositBtnRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 12,
+  },
+  depositBtn: {
+    flex: 1,
+    height: 46,
+    borderRadius: 12,
+    borderWidth: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  goalCard: {
+    borderRadius: 18,
+    padding: 16,
+    borderWidth: 1,
+    borderLeftWidth: 5,
+  },
+  goalTop: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  goalLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    flex: 1,
+  },
+  goalIcon: { fontSize: 28 },
+  goalName: {
+    fontFamily: FONTS.sansBold,
+    fontSize: 15,
+  },
+  doneBadge: {
+    backgroundColor: '#DCFCE7',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+  },
+  doneText: {
+    fontFamily: FONTS.sansBold,
+    fontSize: 9,
+    color: '#16A34A',
+  },
+  goalDate: {
+    fontFamily: FONTS.sansRegular,
+    fontSize: 11,
+    marginTop: 2,
+  },
+  goalRightActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  percentText: {
+    fontFamily: FONTS.sansBold,
+    fontSize: 14,
+    marginRight: 4,
+  },
+  actionSmallBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  progressBar: {
+    height: 8,
+    borderRadius: 4,
+    overflow: 'hidden',
+    marginBottom: 12,
+  },
+  progressFill: {
+    height: '100%',
+    borderRadius: 4,
+  },
+  goalBottom: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  amountLabel: {
+    fontFamily: FONTS.sansMedium,
+    fontSize: 11,
+  },
+  amountValue: {
+    fontFamily: FONTS.sansBold,
+    fontSize: 14,
+  },
+  targetTotal: {
+    fontFamily: FONTS.sansRegular,
+    fontSize: 11,
+  },
+  goalBtnGroup: {
+    flexDirection: 'row',
+    gap: 6,
+  },
+  btnWithdraw: {
+    backgroundColor: '#F1F5F9',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+  },
+  btnWithdrawText: {
+    fontFamily: FONTS.sansBold,
+    fontSize: 11,
+    color: '#475569',
+  },
+  btnDeposit: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+  },
+  btnDepositText: {
+    fontFamily: FONTS.sansBold,
+    fontSize: 11,
+    color: '#FAF8F5',
+  },
+  emptyWrap: {
+    alignItems: 'center',
+    paddingVertical: 40,
+    paddingHorizontal: 20,
+  },
+  emptyIcon: { fontSize: 44, marginBottom: 8 },
+  emptyTitle: {
+    fontFamily: FONTS.serifTitle,
+    fontSize: 18,
+    fontWeight: '800',
+    marginBottom: 4,
+  },
+  emptySub: {
+    fontFamily: FONTS.sansRegular,
+    fontSize: 13,
+    textAlign: 'center',
+  },
+  footerWrap: {
+    alignItems: 'center',
+    paddingVertical: 24,
+    marginTop: 'auto',
+  },
+  footerText: {
+    fontFamily: FONTS.sansRegular,
+    fontSize: 12,
+  },
 });

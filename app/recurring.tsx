@@ -1,10 +1,23 @@
-import { View, Text, StyleSheet, FlatList, Pressable, TextInput, Alert, Modal, ScrollView, Switch } from 'react-native';
+import {
+  View,
+  Text,
+  StyleSheet,
+  FlatList,
+  Pressable,
+  TextInput,
+  Alert,
+  Modal,
+  ScrollView,
+  Switch,
+  useWindowDimensions,
+} from 'react-native';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useCallback, useState } from 'react';
 import { useFocusEffect, router, Stack } from 'expo-router';
 import {
   getRecurringRules,
   addRecurringRule,
+  updateRecurringRule,
   toggleRecurringRule,
   deleteRecurringRule,
   processDueRecurringTransactions,
@@ -15,14 +28,21 @@ import {
   type AccountWithCalculatedBalance,
 } from '../src/database/queries';
 import { useCashbookStore } from '../src/stores/useCashbookStore';
-import { formatRupiah } from '../src/utils/currency';
+import { useThemeStore } from '../src/stores/useThemeStore';
+import { formatRupiah, formatNumberThousand, parseRupiahInput } from '../src/utils/currency';
 import { formatDate, getToday } from '../src/utils/date';
-import { PALETTE, FONTS } from '../src/constants/theme';
+import { FONTS } from '../src/constants/theme';
 import EmptyState from '../src/components/EmptyState';
 import { ModernConfirmModal } from '../src/components/ModernConfirmModal';
+import { EditActionIcon, BackArrowIcon } from '../src/components/ActionIcons';
+import DatePickerModal from '../src/components/DatePickerModal';
 
 export default function RecurringScreen() {
   const db = useSQLiteContext();
+  const { width } = useWindowDimensions();
+  const isTablet = width >= 600;
+  const palette = useThemeStore((s) => s.palette);
+  const isDarkMode = useThemeStore((s) => s.isDarkMode);
   const activeCashbook = useCashbookStore((state) => state.activeCashbook);
   const cashbookId = activeCashbook?.id ?? 1;
 
@@ -31,8 +51,9 @@ export default function RecurringScreen() {
   const [accounts, setAccounts] = useState<AccountWithCalculatedBalance[]>([]);
   const [deleteRuleId, setDeleteRuleId] = useState<number | null>(null);
 
-  // Modal Form
+  // Modal Form (Add / Edit)
   const [showModal, setShowModal] = useState(false);
+  const [editingRuleId, setEditingRuleId] = useState<number | null>(null);
   const [type, setType] = useState<'income' | 'expense'>('expense');
   const [amount, setAmount] = useState('');
   const [categoryId, setCategoryId] = useState<number | null>(null);
@@ -40,6 +61,7 @@ export default function RecurringScreen() {
   const [note, setNote] = useState('');
   const [frequency, setFrequency] = useState<'daily' | 'weekly' | 'monthly'>('monthly');
   const [nextDueDate, setNextDueDate] = useState(getToday());
+  const [showDatePicker, setShowDatePicker] = useState(false);
 
   useFocusEffect(
     useCallback(() => {
@@ -48,7 +70,6 @@ export default function RecurringScreen() {
   );
 
   async function loadData() {
-    // Jalankan pemrosesan otomatis jika ada yang jatuh tempo
     await processDueRecurringTransactions(db);
 
     const [ruleList, cats, accs] = await Promise.all([
@@ -80,8 +101,32 @@ export default function RecurringScreen() {
     loadData();
   }
 
+  const openAddModal = () => {
+    setEditingRuleId(null);
+    setType('expense');
+    setAmount('');
+    setNote('');
+    setFrequency('monthly');
+    setNextDueDate(getToday());
+    if (categories.length > 0) setCategoryId(categories[0].id);
+    if (accounts.length > 0) setAccountId(accounts[0].id);
+    setShowModal(true);
+  };
+
+  const openEditModal = (rule: RecurringRule) => {
+    setEditingRuleId(rule.id);
+    setType(rule.type);
+    setAmount(formatNumberThousand(rule.amount));
+    setNote(rule.note || '');
+    setFrequency(rule.frequency);
+    setNextDueDate(rule.next_due_date);
+    setCategoryId(rule.category_id);
+    setAccountId(rule.account_id ?? (accounts[0]?.id || 1));
+    setShowModal(true);
+  };
+
   async function handleSaveRule() {
-    const numAmount = parseFloat(amount);
+    const numAmount = parseRupiahInput(amount);
     if (!numAmount || numAmount <= 0) {
       Alert.alert('Perhatian', 'Masukkan nominal yang valid');
       return;
@@ -91,349 +136,435 @@ export default function RecurringScreen() {
       return;
     }
 
-    await addRecurringRule(db, {
-      cashbook_id: cashbookId,
-      account_id: accountId,
-      category_id: categoryId,
-      type,
-      amount: numAmount,
-      note: note.trim(),
-      frequency,
-      next_due_date: nextDueDate,
-    });
+    const targetAccId = accountId ?? (accounts.length > 0 ? accounts[0].id : 1);
+
+    if (editingRuleId) {
+      await updateRecurringRule(db, editingRuleId, {
+        category_id: categoryId,
+        account_id: targetAccId,
+        type,
+        amount: numAmount,
+        note: note.trim(),
+        frequency,
+        next_due_date: nextDueDate,
+      });
+    } else {
+      await addRecurringRule(db, {
+        cashbook_id: cashbookId,
+        account_id: targetAccId,
+        category_id: categoryId,
+        type,
+        amount: numAmount,
+        note: note.trim(),
+        frequency,
+        next_due_date: nextDueDate,
+      });
+    }
 
     setShowModal(false);
-    setAmount('');
-    setNote('');
     loadData();
   }
 
   return (
-    <>
-      <Stack.Screen
-        options={{
-          headerShown: true,
-          title: 'Transaksi Berulang',
-          headerStyle: { backgroundColor: PALETTE.card },
-          headerTintColor: PALETTE.ink,
-          headerTitleStyle: { fontFamily: FONTS.serifTitle, fontSize: 18, fontWeight: '800' },
-        }}
-      />
-      <View style={styles.container}>
-        <View style={styles.infoBanner}>
-          <Text style={styles.infoBannerIcon}>🔄</Text>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.infoBannerTitle}>Pencatatan Otomatis Berkala</Text>
-            <Text style={styles.infoBannerText}>
-              Aplikasi akan otomatis mencatat kas keluar/masuk ketika tanggal jatuh tempo tercapai saat aplikasi dibuka.
-            </Text>
-          </View>
-        </View>
+    <View style={[styles.container, { backgroundColor: palette.canvas }]}>
+      <Stack.Screen options={{ headerShown: false }} />
 
-        <FlatList
-          data={rules}
-          keyExtractor={(item) => item.id.toString()}
-          contentContainerStyle={rules.length === 0 ? styles.emptyContainer : styles.listContent}
-          renderItem={({ item }) => (
-            <View style={styles.ruleCard}>
-              <View style={styles.ruleHeader}>
-                <View style={styles.ruleIconBox}>
-                  <Text style={styles.ruleIcon}>{item.category_icon ?? '🔄'}</Text>
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.ruleTitle}>{item.note || item.category_name || 'Tagihan Rutin'}</Text>
-                  <Text style={styles.ruleFrequency}>
-                    {item.frequency === 'daily' ? 'Setiap Hari' : item.frequency === 'weekly' ? 'Setiap Minggu' : 'Setiap Bulan'} • Jatuh tempo: {formatDate(item.next_due_date)}
-                  </Text>
-                </View>
-                <Switch value={item.is_active === 1} onValueChange={() => handleToggle(item.id)} />
-              </View>
-
-              <View style={styles.ruleFooter}>
-                <Text style={[styles.ruleAmount, { color: item.type === 'income' ? PALETTE.income : PALETTE.expense }]}>
-                  {item.type === 'income' ? '+' : '-'}{formatRupiah(item.amount)}
-                </Text>
-                <Pressable
-                  style={({ pressed }) => [styles.deleteBtn, pressed && { opacity: 0.7 }]}
-                  onPress={() => handleDelete(item.id)}
-                >
-                  <Text style={styles.deleteBtnText}>🗑️ Hapus</Text>
-                </Pressable>
-              </View>
+      {/* Header */}
+      <View style={[styles.header, { backgroundColor: palette.card, borderBottomColor: palette.border }]}>
+        <View style={[styles.headerInner, isTablet && { maxWidth: 840, width: '100%', alignSelf: 'center' }]}>
+          <View style={styles.headerLeft}>
+            <Pressable
+              style={({ pressed }) => [styles.backBtn, { backgroundColor: palette.cardMuted }, pressed && { opacity: 0.7 }]}
+              onPress={() => router.back()}
+            >
+              <BackArrowIcon color={palette.ink} size={18} />
+            </Pressable>
+            <View>
+              <Text style={[styles.headerSub, { color: palette.primary }]}>{activeCashbook?.name ?? 'Catatan'}</Text>
+              <Text style={[styles.headerTitle, { color: palette.ink }]}>Transaksi Rutin</Text>
             </View>
-          )}
-          ListEmptyComponent={
-            <EmptyState
-              icon="🔄"
-              title="Belum Ada Transaksi Berulang"
-              subtitle="Tekan tombol di bawah untuk menjadwalkan iuran, wifi, atau sewa berkala"
-            />
-          }
-        />
+          </View>
 
-        <View style={styles.bottomBar}>
-          <Pressable style={styles.addBtn} onPress={() => setShowModal(true)}>
-            <Text style={styles.addBtnText}>+ Buat Transaksi Berulang Baru</Text>
+          <Pressable
+            style={[styles.addTopBtn, { backgroundColor: palette.primary }]}
+            onPress={openAddModal}
+          >
+            <Text style={styles.addTopBtnText}>+ Jadwal</Text>
           </Pressable>
         </View>
+      </View>
 
-        {/* Modal Form Tambah Rule */}
-        <Modal visible={showModal} animationType="slide" transparent>
-          <View style={styles.modalOverlay}>
-            <View style={styles.modalContent}>
-              <View style={styles.modalHeader}>
-                <Text style={styles.modalTitle}>Tambah Jadwal Rutin</Text>
-                <Pressable onPress={() => setShowModal(false)}>
-                  <Text style={styles.modalClose}>✕</Text>
+      <FlatList
+        data={rules}
+        keyExtractor={(item) => item.id.toString()}
+        contentContainerStyle={[
+          styles.listContent,
+          isTablet && { maxWidth: 840, width: '100%', alignSelf: 'center' },
+          { flexGrow: 1 },
+        ]}
+        showsVerticalScrollIndicator={false}
+        ListHeaderComponent={
+          <View style={[styles.infoBanner, { backgroundColor: palette.cardMuted, borderColor: palette.border }]}>
+            <Text style={styles.infoBannerIcon}>🔄</Text>
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.infoBannerTitle, { color: palette.ink }]}>Pencatatan Otomatis Berkala</Text>
+              <Text style={[styles.infoBannerText, { color: palette.inkMuted }]}>
+                Aplikasi otomatis mencatat transaksi saat tanggal tempo tercapai ketika aplikasi dibuka.
+              </Text>
+            </View>
+          </View>
+        }
+        renderItem={({ item }) => (
+          <View style={[styles.ruleCard, { backgroundColor: palette.card, borderColor: palette.border }]}>
+            <View style={styles.ruleHeader}>
+              <View style={[styles.ruleIconBox, { backgroundColor: palette.cardMuted }]}>
+                <Text style={styles.ruleIcon}>{item.category_icon ?? '🔄'}</Text>
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.ruleTitle, { color: palette.ink }]}>
+                  {item.note || item.category_name || 'Tagihan Rutin'}
+                </Text>
+                <Text style={[styles.ruleFrequency, { color: palette.inkMuted }]}>
+                  {item.frequency === 'daily' ? 'Setiap Hari' : item.frequency === 'weekly' ? 'Setiap Minggu' : 'Setiap Bulan'} • Tempo: {formatDate(item.next_due_date)}
+                </Text>
+              </View>
+              <Switch
+                value={item.is_active === 1}
+                onValueChange={() => handleToggle(item.id)}
+                trackColor={{ false: palette.border, true: palette.primary }}
+              />
+            </View>
+
+            <View style={[styles.ruleFooter, { borderTopColor: palette.borderSubtle }]}>
+              <Text style={[styles.ruleAmount, { color: item.type === 'income' ? palette.income : palette.expense }]}>
+                {item.type === 'income' ? '+' : '-'}{formatRupiah(item.amount)}
+              </Text>
+
+              <View style={styles.actionBtnRow}>
+                <Pressable
+                  style={({ pressed }) => [styles.actionBtn, { backgroundColor: palette.cardMuted }, pressed && { opacity: 0.7 }]}
+                  onPress={() => openEditModal(item)}
+                >
+                  <EditActionIcon color={palette.primary} size={14} />
+                  <Text style={[styles.actionBtnText, { color: palette.primary }]}>Edit</Text>
+                </Pressable>
+
+                <Pressable
+                  style={({ pressed }) => [styles.actionBtn, { backgroundColor: palette.cardMuted }, pressed && { opacity: 0.7 }]}
+                  onPress={() => handleDelete(item.id)}
+                >
+                  <Text style={[styles.actionBtnText, { color: palette.expense }]}>Hapus</Text>
+                </Pressable>
+              </View>
+            </View>
+          </View>
+        )}
+        ListEmptyComponent={
+          <EmptyState
+            icon="🔄"
+            title="Belum Ada Transaksi Berulang"
+            subtitle="Jadwalkan iuran, wifi, gaji, atau sewa berkala agar tercatat otomatis"
+            isDark={isDarkMode}
+          />
+        }
+        ListFooterComponent={
+          <View style={styles.footerWrap}>
+            <Text style={[styles.footerText, { color: palette.inkMuted }]}>© 2026 CatatKu</Text>
+          </View>
+        }
+      />
+
+      {/* Modal Form Tambah / Edit */}
+      <Modal visible={showModal} animationType="slide" transparent onRequestClose={() => setShowModal(false)}>
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { backgroundColor: palette.card, borderColor: palette.border }, isTablet && { maxWidth: 540 }]}>
+            <View style={styles.modalHeader}>
+              <Text style={[styles.modalTitle, { color: palette.ink }]}>
+                {editingRuleId ? 'Edit Jadwal Rutin' : 'Tambah Jadwal Rutin'}
+              </Text>
+              <Pressable onPress={() => setShowModal(false)} hitSlop={8}>
+                <Text style={[styles.modalClose, { color: palette.inkMuted }]}>✕</Text>
+              </Pressable>
+            </View>
+
+            <ScrollView showsVerticalScrollIndicator={false}>
+              {/* Type toggle */}
+              <View style={styles.typeToggleRow}>
+                <Pressable
+                  style={[
+                    styles.typeBtn,
+                    { backgroundColor: palette.cardMuted, borderColor: palette.border },
+                    type === 'expense' && { backgroundColor: isDarkMode ? '#451A03' : '#FEE2E2', borderColor: palette.expense },
+                  ]}
+                  onPress={() => setType('expense')}
+                >
+                  <Text style={[styles.typeBtnText, { color: type === 'expense' ? palette.expense : palette.inkMuted }]}>
+                    📉 Pengeluaran
+                  </Text>
+                </Pressable>
+                <Pressable
+                  style={[
+                    styles.typeBtn,
+                    { backgroundColor: palette.cardMuted, borderColor: palette.border },
+                    type === 'income' && { backgroundColor: isDarkMode ? '#064E3B' : '#DCFCE7', borderColor: palette.income },
+                  ]}
+                  onPress={() => setType('income')}
+                >
+                  <Text style={[styles.typeBtnText, { color: type === 'income' ? palette.income : palette.inkMuted }]}>
+                    📈 Pemasukan
+                  </Text>
                 </Pressable>
               </View>
 
-              <ScrollView showsVerticalScrollIndicator={false}>
-                {/* Type toggle */}
-                <View style={styles.typeToggleRow}>
+              {/* Amount */}
+              <Text style={[styles.inputLabel, { color: palette.inkSecondary }]}>Nominal (Rp)</Text>
+              <TextInput
+                style={[styles.input, { backgroundColor: palette.cardMuted, borderColor: palette.border, color: palette.ink }]}
+                placeholder="0"
+                keyboardType="numeric"
+                placeholderTextColor={palette.inkMuted}
+                value={amount}
+                onChangeText={(text) => setAmount(formatNumberThousand(text))}
+              />
+
+              {/* Note */}
+              <Text style={[styles.inputLabel, { color: palette.inkSecondary }]}>Nama / Keterangan Tagihan</Text>
+              <TextInput
+                style={[styles.input, { backgroundColor: palette.cardMuted, borderColor: palette.border, color: palette.ink }]}
+                placeholder="Misal: Tagihan WiFi, Arisan, Gaji"
+                placeholderTextColor={palette.inkMuted}
+                value={note}
+                onChangeText={setNote}
+              />
+
+              {/* Frekuensi */}
+              <Text style={[styles.inputLabel, { color: palette.inkSecondary }]}>Frekuensi Berulang</Text>
+              <View style={styles.freqRow}>
+                {(['monthly', 'weekly', 'daily'] as const).map((f) => (
                   <Pressable
-                    style={[styles.typeBtn, type === 'expense' && styles.typeBtnExpense]}
-                    onPress={() => setType('expense')}
+                    key={f}
+                    style={[
+                      styles.freqChip,
+                      { backgroundColor: palette.cardMuted, borderColor: palette.border },
+                      frequency === f && { backgroundColor: palette.primary, borderColor: palette.primary },
+                    ]}
+                    onPress={() => setFrequency(f)}
                   >
-                    <Text style={[styles.typeBtnText, type === 'expense' && styles.typeBtnTextExpense]}>
-                      📉 Pengeluaran Rutin
+                    <Text style={[styles.freqChipText, { color: frequency === f ? '#FFFFFF' : palette.inkMuted }]}>
+                      {f === 'monthly' ? 'Bulanan' : f === 'weekly' ? 'Mingguan' : 'Harian'}
                     </Text>
                   </Pressable>
+                ))}
+              </View>
+
+              {/* Jatuh Tempo Pertama via DatePicker */}
+              <Text style={[styles.inputLabel, { color: palette.inkSecondary }]}>Tanggal Jatuh Tempo Berikutnya</Text>
+              <Pressable
+                style={[styles.dateTrigger, { backgroundColor: palette.cardMuted, borderColor: palette.border }]}
+                onPress={() => setShowDatePicker(true)}
+              >
+                <Text style={{ fontSize: 16 }}>📅</Text>
+                <Text style={[styles.dateTriggerText, { color: palette.ink }]}>
+                  {formatDate(nextDueDate)}
+                </Text>
+                <Text style={[styles.dateChangeHint, { color: palette.primary }]}>Ubah</Text>
+              </Pressable>
+
+              {/* Kategori */}
+              <Text style={[styles.inputLabel, { color: palette.inkSecondary }]}>Pilih Kategori</Text>
+              <View style={styles.catGrid}>
+                {categories.map((c) => (
                   <Pressable
-                    style={[styles.typeBtn, type === 'income' && styles.typeBtnIncome]}
-                    onPress={() => setType('income')}
+                    key={c.id}
+                    style={[
+                      styles.catChip,
+                      { backgroundColor: palette.cardMuted, borderColor: palette.border },
+                      categoryId === c.id && { backgroundColor: isDarkMode ? '#16313B' : '#EAF6F3', borderColor: palette.primary },
+                    ]}
+                    onPress={() => setCategoryId(c.id)}
                   >
-                    <Text style={[styles.typeBtnText, type === 'income' && styles.typeBtnTextIncome]}>
-                      📈 Pemasukan Rutin
+                    <Text style={styles.catIcon}>{c.icon}</Text>
+                    <Text style={[styles.catText, { color: categoryId === c.id ? palette.primary : palette.ink }]}>
+                      {c.name}
                     </Text>
                   </Pressable>
-                </View>
+                ))}
+              </View>
 
-                {/* Amount */}
-                <Text style={styles.inputLabel}>Nominal (Rp)</Text>
-                <TextInput
-                  style={styles.input}
-                  placeholder="0"
-                  keyboardType="numeric"
-                  placeholderTextColor={PALETTE.inkMuted}
-                  value={amount}
-                  onChangeText={setAmount}
-                />
-
-                {/* Note */}
-                <Text style={styles.inputLabel}>Nama / Keterangan Tagihan</Text>
-                <TextInput
-                  style={styles.input}
-                  placeholder="Misal: Tagihan WiFi Indihome, Kas RT, Sewa"
-                  placeholderTextColor={PALETTE.inkMuted}
-                  value={note}
-                  onChangeText={setNote}
-                />
-
-                {/* Frekuensi */}
-                <Text style={styles.inputLabel}>Frekuensi Berulang</Text>
-                <View style={styles.freqRow}>
-                  <Pressable
-                    style={[styles.freqChip, frequency === 'monthly' && styles.freqChipActive]}
-                    onPress={() => setFrequency('monthly')}
-                  >
-                    <Text style={[styles.freqChipText, frequency === 'monthly' && styles.freqChipTextActive]}>
-                      Bulanan
-                    </Text>
-                  </Pressable>
-                  <Pressable
-                    style={[styles.freqChip, frequency === 'weekly' && styles.freqChipActive]}
-                    onPress={() => setFrequency('weekly')}
-                  >
-                    <Text style={[styles.freqChipText, frequency === 'weekly' && styles.freqChipTextActive]}>
-                      Mingguan
-                    </Text>
-                  </Pressable>
-                  <Pressable
-                    style={[styles.freqChip, frequency === 'daily' && styles.freqChipActive]}
-                    onPress={() => setFrequency('daily')}
-                  >
-                    <Text style={[styles.freqChipText, frequency === 'daily' && styles.freqChipTextActive]}>
-                      Harian
-                    </Text>
-                  </Pressable>
-                </View>
-
-                {/* Jatuh Tempo Pertama */}
-                <Text style={styles.inputLabel}>Tanggal Mulai / Jatuh Tempo Pertama</Text>
-                <TextInput
-                  style={styles.input}
-                  placeholder="YYYY-MM-DD"
-                  placeholderTextColor={PALETTE.inkMuted}
-                  value={nextDueDate}
-                  onChangeText={setNextDueDate}
-                />
-
-                {/* Kategori */}
-                <Text style={styles.inputLabel}>Pilih Kategori</Text>
-                <View style={styles.catGrid}>
-                  {categories.map((c) => (
-                    <Pressable
-                      key={c.id}
-                      style={[styles.catChip, categoryId === c.id && styles.catChipActive]}
-                      onPress={() => setCategoryId(c.id)}
-                    >
-                      <Text style={styles.catIcon}>{c.icon}</Text>
-                      <Text style={[styles.catText, categoryId === c.id && styles.catTextActive]}>
-                        {c.name}
-                      </Text>
-                    </Pressable>
-                  ))}
-                </View>
-
-                <Pressable style={styles.saveBtn} onPress={handleSaveRule}>
-                  <Text style={styles.saveBtnText}>Simpan Jadwal Rutin</Text>
-                </Pressable>
-              </ScrollView>
-            </View>
+              <Pressable style={[styles.saveBtn, { backgroundColor: palette.primary }]} onPress={handleSaveRule}>
+                <Text style={styles.saveBtnText}>
+                  {editingRuleId ? 'Perbarui Jadwal Rutin' : 'Simpan Jadwal Rutin'}
+                </Text>
+              </Pressable>
+            </ScrollView>
           </View>
-        </Modal>
-        <ModernConfirmModal
-          visible={!!deleteRuleId}
-          type="danger"
-          icon="🗑️"
-          title="Hapus Transaksi Berulang"
-          message="Yakin ingin menghapus jadwal transaksi rutin ini? Pencatatan otomatis ke depan akan dihentikan."
-          cancelText="Batal"
-          confirmText="Ya, Hapus"
-          onCancel={() => setDeleteRuleId(null)}
-          onConfirm={confirmDeleteRule}
-        />
-      </View>
-    </>
+        </View>
+      </Modal>
+
+      {/* DatePicker Visual */}
+      <DatePickerModal
+        visible={showDatePicker}
+        value={nextDueDate}
+        onSelect={(newDateStr) => {
+          setNextDueDate(newDateStr.split(' ')[0]);
+        }}
+        onClose={() => setShowDatePicker(false)}
+      />
+
+      <ModernConfirmModal
+        visible={!!deleteRuleId}
+        type="danger"
+        icon="🗑️"
+        title="Hapus Transaksi Berulang"
+        message="Hapus jadwal transaksi berulang ini? Transaksi yang sudah terbit sebelumnya tidak akan terhapus."
+        cancelText="Batal"
+        confirmText="Ya, Hapus"
+        onCancel={() => setDeleteRuleId(null)}
+        onConfirm={confirmDeleteRule}
+      />
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: PALETTE.canvas },
-  infoBanner: {
+  container: { flex: 1 },
+  header: {
+    paddingTop: 50,
+    paddingHorizontal: 20,
+    paddingBottom: 16,
+    borderBottomWidth: 1,
+  },
+  headerInner: {
     flexDirection: 'row',
-    backgroundColor: PALETTE.primarySurface,
-    padding: 14,
-    margin: 16,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: PALETTE.border,
-    gap: 10,
+    justifyContent: 'space-between',
     alignItems: 'center',
   },
-  infoBannerIcon: { fontSize: 22 },
+  headerLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  backBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  headerSub: {
+    fontFamily: FONTS.sansBold,
+    fontSize: 11,
+    textTransform: 'uppercase',
+  },
+  headerTitle: {
+    fontFamily: FONTS.serifTitle,
+    fontSize: 18,
+    fontWeight: '800',
+  },
+  addTopBtn: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 10,
+  },
+  addTopBtnText: {
+    fontFamily: FONTS.sansBold,
+    fontSize: 12,
+    color: '#FAF8F5',
+  },
+  listContent: {
+    padding: 16,
+    gap: 12,
+  },
+  infoBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 14,
+    borderRadius: 16,
+    borderWidth: 1,
+    marginBottom: 6,
+    gap: 12,
+  },
+  infoBannerIcon: { fontSize: 24 },
   infoBannerTitle: {
     fontFamily: FONTS.sansBold,
     fontSize: 13,
-    fontWeight: '800',
-    color: PALETTE.primaryAccent,
   },
   infoBannerText: {
-    fontFamily: FONTS.sansMedium,
+    fontFamily: FONTS.sansRegular,
     fontSize: 11,
-    fontWeight: '600',
-    color: PALETTE.inkSecondary,
     lineHeight: 16,
     marginTop: 2,
   },
-  listContent: { paddingHorizontal: 16, paddingBottom: 100 },
-  emptyContainer: { flexGrow: 1 },
   ruleCard: {
-    backgroundColor: PALETTE.card,
-    borderRadius: 16,
+    borderRadius: 18,
     padding: 16,
-    marginBottom: 10,
     borderWidth: 1,
-    borderColor: PALETTE.border,
-    ...PALETTE.shadowLight,
   },
   ruleHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
+    marginBottom: 12,
   },
   ruleIconBox: {
-    width: 42,
-    height: 42,
+    width: 44,
+    height: 44,
     borderRadius: 12,
-    backgroundColor: PALETTE.primarySurface,
     justifyContent: 'center',
     alignItems: 'center',
   },
-  ruleIcon: { fontSize: 20 },
+  ruleIcon: { fontSize: 22 },
   ruleTitle: {
     fontFamily: FONTS.sansBold,
-    fontSize: 15,
-    fontWeight: '800',
-    color: PALETTE.ink,
+    fontSize: 14,
   },
   ruleFrequency: {
-    fontFamily: FONTS.sansMedium,
-    fontSize: 11,
-    fontWeight: '600',
-    color: PALETTE.inkMuted,
+    fontFamily: FONTS.sansRegular,
+    fontSize: 12,
     marginTop: 2,
   },
   ruleFooter: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginTop: 12,
     paddingTop: 10,
     borderTopWidth: 1,
-    borderTopColor: PALETTE.borderSubtle,
   },
   ruleAmount: {
-    fontFamily: FONTS.serifTitle,
+    fontFamily: FONTS.sansBold,
     fontSize: 16,
     fontWeight: '800',
   },
-  deleteBtn: {
-    paddingHorizontal: 8,
-    paddingVertical: 5,
+  actionBtnRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  actionBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
     borderRadius: 8,
-    backgroundColor: '#FEE2E2',
-    justifyContent: 'center',
-    alignItems: 'center',
   },
-  deleteBtnText: {
+  actionBtnText: {
     fontFamily: FONTS.sansBold,
-    fontSize: 12,
-    fontWeight: '700',
-    color: PALETTE.expense,
+    fontSize: 11,
   },
-  bottomBar: {
-    position: 'absolute',
-    bottom: 20,
-    left: 16,
-    right: 16,
-  },
-  addBtn: {
-    backgroundColor: PALETTE.primary,
-    borderRadius: 16,
-    paddingVertical: 15,
-    alignItems: 'center',
-    ...PALETTE.shadowMedium,
-  },
-  addBtnText: {
-    fontFamily: FONTS.sansBold,
-    fontSize: 14,
-    fontWeight: '800',
-    color: '#FAF8F5',
-  },
-  // Modal
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    justifyContent: 'flex-end',
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
   },
   modalContent: {
-    backgroundColor: PALETTE.card,
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
+    width: '100%',
+    maxHeight: '90%',
+    borderRadius: 22,
     padding: 20,
-    maxHeight: '88%',
+    borderWidth: 1,
   },
   modalHeader: {
     flexDirection: 'row',
@@ -443,91 +574,80 @@ const styles = StyleSheet.create({
   },
   modalTitle: {
     fontFamily: FONTS.serifTitle,
-    fontSize: 20,
+    fontSize: 18,
     fontWeight: '800',
-    color: PALETTE.ink,
   },
   modalClose: {
     fontSize: 18,
-    fontWeight: '700',
-    color: PALETTE.inkMuted,
+    fontFamily: FONTS.sansBold,
     padding: 4,
   },
   typeToggleRow: {
     flexDirection: 'row',
-    gap: 8,
+    gap: 10,
     marginBottom: 14,
   },
   typeBtn: {
     flex: 1,
-    paddingVertical: 11,
-    borderRadius: 12,
-    backgroundColor: PALETTE.cardMuted,
-    alignItems: 'center',
+    height: 42,
+    borderRadius: 10,
     borderWidth: 1,
-    borderColor: PALETTE.border,
-  },
-  typeBtnExpense: {
-    backgroundColor: PALETTE.expenseLight,
-    borderColor: PALETTE.expense,
-  },
-  typeBtnIncome: {
-    backgroundColor: PALETTE.incomeLight,
-    borderColor: PALETTE.income,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   typeBtnText: {
     fontFamily: FONTS.sansBold,
     fontSize: 12,
-    fontWeight: '700',
-    color: PALETTE.inkMuted,
   },
-  typeBtnTextExpense: { color: PALETTE.expense },
-  typeBtnTextIncome: { color: PALETTE.income },
   inputLabel: {
     fontFamily: FONTS.sansBold,
     fontSize: 12,
-    fontWeight: '800',
-    color: PALETTE.inkSecondary,
     marginBottom: 6,
-    marginTop: 10,
+    marginTop: 8,
   },
   input: {
-    backgroundColor: PALETTE.cardMuted,
+    height: 48,
     borderRadius: 12,
+    borderWidth: 1,
     paddingHorizontal: 14,
-    paddingVertical: 11,
     fontFamily: FONTS.sansMedium,
     fontSize: 14,
-    fontWeight: '600',
-    color: PALETTE.ink,
-    borderWidth: 1,
-    borderColor: PALETTE.border,
   },
   freqRow: {
     flexDirection: 'row',
     gap: 8,
+    marginBottom: 6,
   },
   freqChip: {
     flex: 1,
-    paddingVertical: 10,
+    height: 40,
     borderRadius: 10,
-    backgroundColor: PALETTE.cardMuted,
-    alignItems: 'center',
     borderWidth: 1,
-    borderColor: PALETTE.border,
-  },
-  freqChipActive: {
-    backgroundColor: PALETTE.primaryAccent,
-    borderColor: PALETTE.primaryAccent,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   freqChipText: {
     fontFamily: FONTS.sansBold,
     fontSize: 12,
-    fontWeight: '700',
-    color: PALETTE.inkSecondary,
   },
-  freqChipTextActive: {
-    color: '#FAF8F5',
+  dateTrigger: {
+    height: 48,
+    borderRadius: 12,
+    borderWidth: 1,
+    paddingHorizontal: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  dateTriggerText: {
+    fontFamily: FONTS.sansBold,
+    fontSize: 13,
+    flex: 1,
+    marginLeft: 8,
+  },
+  dateChangeHint: {
+    fontFamily: FONTS.sansBold,
+    fontSize: 12,
   },
   catGrid: {
     flexDirection: 'row',
@@ -539,41 +659,37 @@ const styles = StyleSheet.create({
   catChip: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 10,
-    paddingVertical: 7,
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
     borderRadius: 10,
-    backgroundColor: PALETTE.cardMuted,
     borderWidth: 1,
-    borderColor: PALETTE.border,
-    gap: 4,
   },
-  catChipActive: {
-    backgroundColor: PALETTE.primarySurface,
-    borderColor: PALETTE.primaryAccent,
-  },
-  catIcon: { fontSize: 14 },
+  catIcon: { fontSize: 16 },
   catText: {
     fontFamily: FONTS.sansMedium,
     fontSize: 12,
-    fontWeight: '600',
-    color: PALETTE.inkSecondary,
-  },
-  catTextActive: {
-    fontFamily: FONTS.sansBold,
-    color: PALETTE.primaryAccent,
   },
   saveBtn: {
-    backgroundColor: PALETTE.primary,
-    borderRadius: 14,
-    paddingVertical: 14,
+    height: 48,
+    borderRadius: 12,
+    justifyContent: 'center',
     alignItems: 'center',
-    marginTop: 8,
-    marginBottom: 20,
+    marginTop: 10,
+    marginBottom: 10,
   },
   saveBtnText: {
     fontFamily: FONTS.sansBold,
     fontSize: 14,
-    fontWeight: '800',
     color: '#FAF8F5',
+  },
+  footerWrap: {
+    alignItems: 'center',
+    paddingVertical: 24,
+    marginTop: 'auto',
+  },
+  footerText: {
+    fontFamily: FONTS.sansRegular,
+    fontSize: 12,
   },
 });

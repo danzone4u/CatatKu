@@ -9,6 +9,7 @@ import {
   Modal,
   Alert,
   TextInput,
+  useWindowDimensions,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { router, useFocusEffect } from 'expo-router';
@@ -41,6 +42,7 @@ import {
   MoonIcon,
   BellIcon,
   BillActionIcon,
+  GearIcon,
 } from '../src/components/ActionIcons';
 import {
   checkDueReminders,
@@ -69,12 +71,14 @@ const ALL_AVAILABLE_SHORTCUTS: ShortcutItem[] = [
 ];
 
 const DEFAULT_SHORTCUT_IDS = ['wallets', 'transfer', 'bills', 'debts'];
-const SETTINGS_KEY = 'user_custom_shortcuts_v1';
+const SETTINGS_KEY = 'home_screen_shortcuts_v1';
 
 type BookTypeFilter = 'all' | 'personal' | 'organization' | 'business';
 
 export default function CashbookListScreen() {
   const db = useSQLiteContext();
+  const { width } = useWindowDimensions();
+  const isTablet = width >= 600;
   const { activeCashbook, setActiveCashbook } = useCashbookStore();
   const palette = useThemeStore((s) => s.palette);
   const isDarkMode = useThemeStore((s) => s.isDarkMode);
@@ -306,7 +310,11 @@ export default function CashbookListScreen() {
       <StatusBar style={isDarkMode ? 'light' : 'dark'} />
       <ScrollView
         style={styles.scroll}
-        contentContainerStyle={styles.content}
+        contentContainerStyle={[
+          styles.content,
+          isTablet && { maxWidth: 840, width: '100%', alignSelf: 'center' },
+          { flexGrow: 1 },
+        ]}
         showsVerticalScrollIndicator={false}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
       >
@@ -322,8 +330,24 @@ export default function CashbookListScreen() {
               <Text style={[styles.tagline, { color: palette.primary }]}>Catatan Rapi, Finansial Pasti.</Text>
             </View>
 
-            {/* Sisi Kanan Header: Notifikasi & Toggle Dark/Light Mode */}
+            {/* Sisi Kanan Header: Notifikasi, Tema & Pengaturan Global */}
             <View style={styles.headerRightBadge}>
+              {/* Tombol Pengaturan Global */}
+              <Pressable
+                style={({ pressed }) => [
+                  styles.themeIconBtn,
+                  {
+                    backgroundColor: isDarkMode ? 'rgba(255, 255, 255, 0.08)' : palette.cardMuted,
+                    borderColor: palette.border,
+                  },
+                  pressed && { opacity: 0.7 },
+                ]}
+                onPress={() => router.push('/global-settings' as any)}
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              >
+                <GearIcon color={palette.ink} size={19} />
+              </Pressable>
+
               {/* Tombol Notifikasi */}
               <Pressable
                 style={({ pressed }) => [
@@ -1313,8 +1337,9 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
   },
   footerWrap: {
-    marginTop: 28,
-    marginBottom: 20,
+    marginTop: 'auto',
+    paddingTop: 36,
+    paddingBottom: 24,
     alignItems: 'center',
     gap: 4,
   },

@@ -1,19 +1,42 @@
-import { View, Text, StyleSheet, TextInput, Pressable, ScrollView, Alert } from 'react-native';
+import {
+  View,
+  Text,
+  StyleSheet,
+  TextInput,
+  Pressable,
+  ScrollView,
+  Alert,
+  useWindowDimensions,
+} from 'react-native';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useState, useEffect } from 'react';
-import { router, Stack } from 'expo-router';
+import { router, Stack, useLocalSearchParams } from 'expo-router';
 import {
   addDebt,
+  updateDebt,
+  getDebts,
   getCashbooks,
   getAccounts,
   type Cashbook,
   type AccountWithCalculatedBalance,
 } from '../src/database/queries';
 import { useCashbookStore } from '../src/stores/useCashbookStore';
-import { getToday } from '../src/utils/date';
+import { useThemeStore } from '../src/stores/useThemeStore';
+import { formatNumberThousand, parseRupiahInput } from '../src/utils/currency';
+import { getToday, formatDate } from '../src/utils/date';
+import { FONTS } from '../src/constants/theme';
+import { BackArrowIcon } from '../src/components/ActionIcons';
+import DatePickerModal from '../src/components/DatePickerModal';
 
 export default function AddDebtScreen() {
   const db = useSQLiteContext();
+  const params = useLocalSearchParams<{ id?: string }>();
+  const editingDebtId = params.id ? parseInt(params.id, 10) : null;
+
+  const { width } = useWindowDimensions();
+  const isTablet = width >= 600;
+  const palette = useThemeStore((s) => s.palette);
+  const isDarkMode = useThemeStore((s) => s.isDarkMode);
   const activeCashbook = useCashbookStore((state) => state.activeCashbook);
 
   const [targetCashbookId, setTargetCashbookId] = useState<number>(activeCashbook?.id ?? 1);
@@ -28,9 +51,35 @@ export default function AddDebtScreen() {
   const [dueDate, setDueDate] = useState('');
   const [date, setDate] = useState(getToday());
 
+  const [pickerTarget, setPickerTarget] = useState<'date' | 'dueDate' | null>(null);
+
   useEffect(() => {
     loadCashbooksAndAccounts();
   }, [targetCashbookId]);
+
+  useEffect(() => {
+    if (editingDebtId) {
+      loadEditingDebt(editingDebtId);
+    }
+  }, [editingDebtId]);
+
+  async function loadEditingDebt(id: number) {
+    try {
+      const allDebts = await getDebts(db, targetCashbookId);
+      const found = allDebts.find((d) => d.id === id);
+      if (found) {
+        setType(found.type);
+        setPersonName(found.person_name);
+        setAmount(formatNumberThousand(found.amount));
+        setNote(found.note || '');
+        setDate(found.date);
+        setDueDate(found.due_date || '');
+        setSelectedAccountId(found.account_id ?? null);
+      }
+    } catch (e) {
+      console.warn('loadEditingDebt error:', e);
+    }
+  }
 
   async function loadCashbooksAndAccounts() {
     const [bList, accs] = await Promise.all([
@@ -45,76 +94,109 @@ export default function AddDebtScreen() {
   }
 
   async function handleSave() {
-    const numAmount = parseFloat(amount);
+    const numAmount = parseRupiahInput(amount);
     if (!numAmount || numAmount <= 0) {
-      Alert.alert('Error', 'Masukkan jumlah yang valid');
+      Alert.alert('Perhatian', 'Masukkan jumlah nominal yang valid');
       return;
     }
     if (!personName.trim()) {
-      Alert.alert('Error', 'Masukkan nama orang');
+      Alert.alert('Perhatian', 'Masukkan nama pihak atau orang');
       return;
     }
 
-    await addDebt(db, {
-      cashbook_id: targetCashbookId,
-      account_id: selectedAccountId,
-      type,
-      person_name: personName.trim(),
-      amount: numAmount,
-      note,
-      due_date: dueDate || null,
-      date,
-    });
+    if (editingDebtId) {
+      await updateDebt(db, editingDebtId, {
+        person_name: personName.trim(),
+        amount: numAmount,
+        note,
+        due_date: dueDate || null,
+        date,
+        account_id: selectedAccountId,
+      });
+    } else {
+      await addDebt(db, {
+        cashbook_id: targetCashbookId,
+        account_id: selectedAccountId,
+        type,
+        person_name: personName.trim(),
+        amount: numAmount,
+        note,
+        due_date: dueDate || null,
+        date,
+      });
+    }
 
     router.back();
   }
 
   return (
-    <>
-      <Stack.Screen
-        options={{
-          headerShown: true,
-          title: 'Tambah Hutang / Piutang',
-          headerStyle: { backgroundColor: '#FFFFFF' },
-          headerTintColor: '#0F172A',
-          headerTitleStyle: { fontWeight: '700' },
-        }}
-      />
-      <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+    <View style={[styles.container, { backgroundColor: palette.canvas }]}>
+      <Stack.Screen options={{ headerShown: false }} />
+
+      {/* Header */}
+      <View style={[styles.header, { backgroundColor: palette.card, borderBottomColor: palette.border }]}>
+        <View style={[styles.headerInner, isTablet && { maxWidth: 720, width: '100%', alignSelf: 'center' }]}>
+          <Pressable
+            style={({ pressed }) => [styles.backBtn, { backgroundColor: palette.cardMuted }, pressed && { opacity: 0.7 }]}
+            onPress={() => router.back()}
+          >
+            <BackArrowIcon color={palette.ink} size={18} />
+          </Pressable>
+          <Text style={[styles.headerTitle, { color: palette.ink }]}>
+            {editingDebtId ? 'Edit Catatan Hutang / Piutang' : 'Tambah Hutang / Piutang'}
+          </Text>
+          <View style={{ width: 36 }} />
+        </View>
+      </View>
+
+      <ScrollView
+        contentContainerStyle={[
+          styles.content,
+          isTablet && { maxWidth: 720, width: '100%', alignSelf: 'center' },
+          { flexGrow: 1 },
+        ]}
+        showsVerticalScrollIndicator={false}
+      >
         {/* Pilih Catatan */}
-        <Text style={styles.label}>Catatan</Text>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.cashbookRow}>
-          {cashbooks.map((b) => (
-            <Pressable
-              key={b.id}
-              style={[
-                styles.cashbookChip,
-                targetCashbookId === b.id && styles.cashbookChipSelected,
-              ]}
-              onPress={() => setTargetCashbookId(b.id)}
-            >
-              <Text style={styles.cashbookChipIcon}>{b.icon}</Text>
-              <Text
-                style={[
-                  styles.cashbookChipText,
-                  targetCashbookId === b.id && styles.cashbookChipTextSelected,
-                ]}
-              >
-                {b.name}
-              </Text>
-            </Pressable>
-          ))}
-        </ScrollView>
+        {!editingDebtId && (
+          <>
+            <Text style={[styles.label, { color: palette.inkSecondary }]}>Buku Catatan</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.cashbookRow}>
+              {cashbooks.map((b) => (
+                <Pressable
+                  key={b.id}
+                  style={[
+                    styles.cashbookChip,
+                    { backgroundColor: palette.cardMuted, borderColor: palette.border },
+                    targetCashbookId === b.id && { backgroundColor: isDarkMode ? '#16313B' : '#EAF6F3', borderColor: palette.primary },
+                  ]}
+                  onPress={() => setTargetCashbookId(b.id)}
+                >
+                  <Text style={styles.cashbookChipIcon}>{b.icon}</Text>
+                  <Text
+                    style={[
+                      styles.cashbookChipText,
+                      { color: targetCashbookId === b.id ? palette.primary : palette.ink },
+                    ]}
+                  >
+                    {b.name}
+                  </Text>
+                </Pressable>
+              ))}
+            </ScrollView>
+          </>
+        )}
 
         {/* Pilih Dompet */}
-        <Text style={styles.label}>Dompet / Akun Terkait</Text>
+        <Text style={[styles.label, { color: palette.inkSecondary }]}>Dompet / Akun Terkait</Text>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.cashbookRow}>
           {accounts.map((a) => (
             <Pressable
               key={a.id}
               style={[
                 styles.cashbookChip,
-                selectedAccountId === a.id && styles.cashbookChipSelected,
+                { backgroundColor: palette.cardMuted, borderColor: palette.border },
+                selectedAccountId === a.id && { backgroundColor: isDarkMode ? '#16313B' : '#EAF6F3', borderColor: palette.primary },
               ]}
               onPress={() => setSelectedAccountId(a.id)}
             >
@@ -122,7 +204,7 @@ export default function AddDebtScreen() {
               <Text
                 style={[
                   styles.cashbookChipText,
-                  selectedAccountId === a.id && styles.cashbookChipTextSelected,
+                  { color: selectedAccountId === a.id ? palette.primary : palette.ink },
                 ]}
               >
                 {a.name}
@@ -132,68 +214,88 @@ export default function AddDebtScreen() {
         </ScrollView>
 
         {/* Type Toggle */}
-        <View style={styles.toggleRow}>
-          <Pressable
-            style={[styles.toggleBtn, type === 'debt' && styles.toggleBtnDebt]}
-            onPress={() => setType('debt')}
-          >
-            <Text style={[styles.toggleText, type === 'debt' && styles.toggleTextActive]}>💸 Hutang (Saya Pinjam)</Text>
-          </Pressable>
-          <Pressable
-            style={[styles.toggleBtn, type === 'receivable' && styles.toggleBtnReceivable]}
-            onPress={() => setType('receivable')}
-          >
-            <Text style={[styles.toggleText, type === 'receivable' && styles.toggleTextActive]}>💎 Piutang (Dia Pinjam)</Text>
-          </Pressable>
-        </View>
+        {!editingDebtId && (
+          <View style={styles.toggleRow}>
+            <Pressable
+              style={[
+                styles.toggleBtn,
+                { backgroundColor: palette.cardMuted, borderColor: palette.border },
+                type === 'debt' && { backgroundColor: isDarkMode ? '#451A03' : '#FEE2E2', borderColor: palette.expense },
+              ]}
+              onPress={() => setType('debt')}
+            >
+              <Text style={[styles.toggleText, { color: type === 'debt' ? palette.expense : palette.inkMuted }]}>
+                💸 Hutang (Saya Pinjam)
+              </Text>
+            </Pressable>
+            <Pressable
+              style={[
+                styles.toggleBtn,
+                { backgroundColor: palette.cardMuted, borderColor: palette.border },
+                type === 'receivable' && { backgroundColor: isDarkMode ? '#2E1065' : '#EDE9FE', borderColor: '#8B5CF6' },
+              ]}
+              onPress={() => setType('receivable')}
+            >
+              <Text style={[styles.toggleText, { color: type === 'receivable' ? '#8B5CF6' : palette.inkMuted }]}>
+                💎 Piutang (Dia Pinjam)
+              </Text>
+            </Pressable>
+          </View>
+        )}
 
         {/* Person Name */}
-        <Text style={styles.label}>Nama Pihak / Orang</Text>
+        <Text style={[styles.label, { color: palette.inkSecondary }]}>Nama Pihak / Orang</Text>
         <TextInput
-          style={styles.input}
+          style={[styles.input, { backgroundColor: palette.cardMuted, borderColor: palette.border, color: palette.ink }]}
           placeholder="Nama orang atau pihak terkait"
-          placeholderTextColor="#94A3B8"
+          placeholderTextColor={palette.inkMuted}
           value={personName}
           onChangeText={setPersonName}
         />
 
         {/* Amount */}
-        <Text style={styles.label}>Jumlah (Rp)</Text>
+        <Text style={[styles.label, { color: palette.inkSecondary }]}>Jumlah (Rp)</Text>
         <TextInput
-          style={styles.amountInput}
+          style={[styles.amountInput, { backgroundColor: palette.cardMuted, borderColor: palette.border, color: palette.ink }]}
           placeholder="0"
-          placeholderTextColor="#94A3B8"
+          placeholderTextColor={palette.inkMuted}
           keyboardType="numeric"
           value={amount}
-          onChangeText={setAmount}
+          onChangeText={(text) => setAmount(formatNumberThousand(text))}
         />
 
         {/* Date */}
-        <Text style={styles.label}>Tanggal Transaksi</Text>
-        <TextInput
-          style={styles.input}
-          placeholder="YYYY-MM-DD"
-          placeholderTextColor="#94A3B8"
-          value={date}
-          onChangeText={setDate}
-        />
+        <Text style={[styles.label, { color: palette.inkSecondary }]}>Tanggal Transaksi</Text>
+        <Pressable
+          style={[styles.dateTrigger, { backgroundColor: palette.cardMuted, borderColor: palette.border }]}
+          onPress={() => setPickerTarget('date')}
+        >
+          <Text style={{ fontSize: 16 }}>📅</Text>
+          <Text style={[styles.dateTriggerText, { color: palette.ink }]}>{formatDate(date)}</Text>
+          <Text style={[styles.dateChangeHint, { color: palette.primary }]}>Ubah</Text>
+        </Pressable>
 
         {/* Due Date */}
-        <Text style={styles.label}>Jatuh Tempo (Opsional)</Text>
-        <TextInput
-          style={styles.input}
-          placeholder="YYYY-MM-DD"
-          placeholderTextColor="#94A3B8"
-          value={dueDate}
-          onChangeText={setDueDate}
-        />
+        <Text style={[styles.label, { color: palette.inkSecondary }]}>Jatuh Tempo (Opsional)</Text>
+        <Pressable
+          style={[styles.dateTrigger, { backgroundColor: palette.cardMuted, borderColor: palette.border }]}
+          onPress={() => setPickerTarget('dueDate')}
+        >
+          <Text style={{ fontSize: 16 }}>⏰</Text>
+          <Text style={[styles.dateTriggerText, { color: palette.ink }]}>
+            {dueDate ? formatDate(dueDate) : 'Tidak ada tenggat'}
+          </Text>
+          <Text style={[styles.dateChangeHint, { color: palette.primary }]}>
+            {dueDate ? 'Ubah' : 'Pilih'}
+          </Text>
+        </Pressable>
 
         {/* Note */}
-        <Text style={styles.label}>Catatan Tambahan</Text>
+        <Text style={[styles.label, { color: palette.inkSecondary }]}>Catatan Tambahan</Text>
         <TextInput
-          style={[styles.input, styles.noteInput]}
+          style={[styles.input, styles.noteInput, { backgroundColor: palette.cardMuted, borderColor: palette.border, color: palette.ink }]}
           placeholder="Tulis alasan, kesepakatan, atau rincian lainnya..."
-          placeholderTextColor="#94A3B8"
+          placeholderTextColor={palette.inkMuted}
           multiline
           numberOfLines={3}
           textAlignVertical="top"
@@ -201,82 +303,172 @@ export default function AddDebtScreen() {
           onChangeText={setNote}
         />
 
-        {/* Save */}
+        {/* Save Button */}
         <Pressable
-          style={({ pressed }) => [styles.saveBtn, pressed && { opacity: 0.8 }]}
+          style={({ pressed }) => [
+            styles.saveBtn,
+            { backgroundColor: palette.primary },
+            pressed && { opacity: 0.85, transform: [{ scale: 0.98 }] },
+          ]}
           onPress={handleSave}
         >
-          <Text style={styles.saveBtnText}>Simpan Catatan Hutang/Piutang</Text>
+          <Text style={styles.saveBtnText}>
+            {editingDebtId ? 'Perbarui Catatan Hutang/Piutang' : 'Simpan Catatan Hutang/Piutang'}
+          </Text>
         </Pressable>
+
+        {/* Footer Copyright */}
+        <View style={styles.footerWrap}>
+          <Text style={[styles.footerText, { color: palette.inkMuted }]}>© 2026 CatatKu</Text>
+        </View>
       </ScrollView>
-    </>
+
+      {/* DatePicker Visual Modal */}
+      <DatePickerModal
+        visible={pickerTarget !== null}
+        value={pickerTarget === 'date' ? date : dueDate || getToday()}
+        onSelect={(newDateStr) => {
+          const onlyDate = newDateStr.split(' ')[0];
+          if (pickerTarget === 'date') setDate(onlyDate);
+          if (pickerTarget === 'dueDate') setDueDate(onlyDate);
+        }}
+        onClose={() => setPickerTarget(null)}
+      />
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#F8FAFC' },
-  content: { padding: 20, paddingBottom: 40 },
-  label: { fontSize: 14, fontWeight: '600', color: '#64748B', marginBottom: 8, marginTop: 12 },
-  cashbookRow: { flexDirection: 'row', marginBottom: 12 },
+  container: { flex: 1 },
+  header: {
+    paddingTop: 50,
+    paddingHorizontal: 20,
+    paddingBottom: 16,
+    borderBottomWidth: 1,
+  },
+  headerInner: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  backBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  headerTitle: {
+    fontFamily: FONTS.serifTitle,
+    fontSize: 17,
+    fontWeight: '800',
+  },
+  content: {
+    padding: 20,
+    gap: 4,
+  },
+  label: {
+    fontFamily: FONTS.sansBold,
+    fontSize: 12,
+    marginBottom: 6,
+    marginTop: 10,
+  },
+  cashbookRow: {
+    flexDirection: 'row',
+    marginBottom: 4,
+  },
   cashbookChip: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    borderRadius: 12,
-    backgroundColor: '#FFFFFF',
-    marginRight: 8,
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 10,
     borderWidth: 1,
-    borderColor: '#E2E8F0',
+    marginRight: 8,
   },
-  cashbookChipSelected: {
-    backgroundColor: '#DBEAFE',
-    borderColor: '#2563EB',
-    borderWidth: 2,
+  cashbookChipIcon: { fontSize: 16 },
+  cashbookChipText: {
+    fontFamily: FONTS.sansMedium,
+    fontSize: 12,
   },
-  cashbookChipIcon: { fontSize: 16, marginRight: 6 },
-  cashbookChipText: { fontSize: 13, fontWeight: '600', color: '#64748B' },
-  cashbookChipTextSelected: { color: '#2563EB' },
-  toggleRow: { flexDirection: 'row', gap: 8, marginBottom: 16 },
+  toggleRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 8,
+    marginBottom: 6,
+  },
   toggleBtn: {
     flex: 1,
-    paddingVertical: 12,
+    height: 44,
     borderRadius: 12,
-    backgroundColor: '#F1F5F9',
+    borderWidth: 1,
+    justifyContent: 'center',
     alignItems: 'center',
   },
-  toggleBtnDebt: { backgroundColor: '#FED7AA' },
-  toggleBtnReceivable: { backgroundColor: '#EDE9FE' },
-  toggleText: { fontSize: 13, fontWeight: '600', color: '#64748B' },
-  toggleTextActive: { color: '#0F172A', fontWeight: '700' },
+  toggleText: {
+    fontFamily: FONTS.sansBold,
+    fontSize: 12,
+  },
   input: {
-    backgroundColor: '#FFFFFF',
+    height: 48,
     borderRadius: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    fontSize: 15,
-    color: '#0F172A',
     borderWidth: 1,
-    borderColor: '#E2E8F0',
+    paddingHorizontal: 14,
+    fontFamily: FONTS.sansMedium,
+    fontSize: 14,
   },
   amountInput: {
-    backgroundColor: '#FFFFFF',
+    height: 52,
     borderRadius: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    fontSize: 24,
-    fontWeight: '700',
-    color: '#0F172A',
     borderWidth: 1,
-    borderColor: '#E2E8F0',
+    paddingHorizontal: 14,
+    fontFamily: FONTS.sansBold,
+    fontSize: 20,
   },
-  noteInput: { minHeight: 80 },
-  saveBtn: {
-    backgroundColor: '#2563EB',
-    borderRadius: 14,
-    paddingVertical: 16,
+  dateTrigger: {
+    height: 48,
+    borderRadius: 12,
+    borderWidth: 1,
+    paddingHorizontal: 14,
+    flexDirection: 'row',
     alignItems: 'center',
-    marginTop: 20,
+    justifyContent: 'space-between',
   },
-  saveBtnText: { color: '#FFFFFF', fontSize: 16, fontWeight: '700' },
+  dateTriggerText: {
+    fontFamily: FONTS.sansBold,
+    fontSize: 13,
+    flex: 1,
+    marginLeft: 8,
+  },
+  dateChangeHint: {
+    fontFamily: FONTS.sansBold,
+    fontSize: 12,
+  },
+  noteInput: {
+    height: 80,
+    paddingTop: 10,
+  },
+  saveBtn: {
+    height: 50,
+    borderRadius: 14,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginTop: 18,
+    marginBottom: 10,
+  },
+  saveBtnText: {
+    fontFamily: FONTS.sansBold,
+    fontSize: 14,
+    color: '#FAF8F5',
+  },
+  footerWrap: {
+    alignItems: 'center',
+    paddingVertical: 24,
+    marginTop: 'auto',
+  },
+  footerText: {
+    fontFamily: FONTS.sansRegular,
+    fontSize: 12,
+  },
 });

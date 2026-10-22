@@ -7,6 +7,7 @@ import {
   Pressable,
   Modal,
   Alert,
+  useWindowDimensions,
 } from 'react-native';
 import Svg, { Path, Circle, Defs, LinearGradient, Stop } from 'react-native-svg';
 import { useSQLiteContext } from 'expo-sqlite';
@@ -62,10 +63,12 @@ const ALL_AVAILABLE_SHORTCUTS: ShortcutItem[] = [
 ];
 
 const DEFAULT_SHORTCUT_IDS = ['wallets', 'transfer', 'bills', 'debts'];
-const SETTINGS_KEY = 'user_custom_shortcuts_v1';
+const SETTINGS_KEY = 'cashbook_screen_shortcuts_v1';
 
 export default function DashboardScreen() {
   const db = useSQLiteContext();
+  const { width } = useWindowDimensions();
+  const isTablet = width >= 600;
   const { activeCashbook, setActiveCashbook } = useCashbookStore();
   const palette = useThemeStore((s) => s.palette);
   const isDarkMode = useThemeStore((s) => s.isDarkMode);
@@ -221,7 +224,11 @@ export default function DashboardScreen() {
     <View style={[styles.screenWrapper, { backgroundColor: palette.canvas }]}>
       <ScrollView
         style={styles.container}
-        contentContainerStyle={styles.content}
+        contentContainerStyle={[
+          styles.content,
+          isTablet && { maxWidth: 840, width: '100%', alignSelf: 'center' },
+          { flexGrow: 1 },
+        ]}
         showsVerticalScrollIndicator={false}
       >
         {/* Top Header Card */}
@@ -526,7 +533,10 @@ export default function DashboardScreen() {
           <Text style={styles.addButtonText}>+ Catat Transaksi Baru</Text>
         </Pressable>
 
-        <View style={{ height: 40 }} />
+        {/* Footer Copyright Terkunci di Bawah */}
+        <View style={styles.footerWrap}>
+          <Text style={[styles.footerText, { color: palette.inkMuted }]}>© 2026 CatatKu</Text>
+        </View>
       </ScrollView>
 
       {/* Modal Kustomisasi Pintasan Fitur */}
@@ -537,7 +547,7 @@ export default function DashboardScreen() {
         onRequestClose={() => setShowCustomizeModal(false)}
       >
         <View style={styles.modalOverlay}>
-          <View style={[styles.modalContent, { backgroundColor: palette.card }]}>
+          <View style={[styles.modalContent, { backgroundColor: palette.card }, isTablet && { maxWidth: 540, alignSelf: 'center', width: '100%', borderRadius: 24 }]}>
             <View style={styles.modalHeader}>
               <View>
                 <Text style={[styles.modalTitle, { color: palette.ink }]}>Kustomisasi Pintasan</Text>
@@ -1081,5 +1091,14 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '700',
     color: '#FFFFFF',
+  },
+  footerWrap: {
+    alignItems: 'center',
+    paddingVertical: 24,
+    marginTop: 'auto',
+  },
+  footerText: {
+    fontFamily: FONTS.sansRegular,
+    fontSize: 12,
   },
 });

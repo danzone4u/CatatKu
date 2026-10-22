@@ -1,19 +1,25 @@
-import { View, Text, StyleSheet, FlatList, Pressable } from 'react-native';
+import { View, Text, StyleSheet, FlatList, Pressable, useWindowDimensions } from 'react-native';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useCallback, useState } from 'react';
-import { useFocusEffect, router } from 'expo-router';
+import { useFocusEffect, router, Stack } from 'expo-router';
 import DebtCard from '../../src/components/DebtCard';
 import FilterChip from '../../src/components/FilterChip';
 import EmptyState from '../../src/components/EmptyState';
 import { getDebts, toggleDebtPaid, deleteDebt, type DebtWithPayments } from '../../src/database/queries';
 import { useCashbookStore } from '../../src/stores/useCashbookStore';
-import { PALETTE } from '../../src/constants/theme';
+import { useThemeStore } from '../../src/stores/useThemeStore';
+import { FONTS } from '../../src/constants/theme';
 import { ModernConfirmModal } from '../../src/components/ModernConfirmModal';
+import { BackArrowIcon } from '../../src/components/ActionIcons';
 
 type FilterType = 'all' | 'debt' | 'receivable';
 
 export default function DebtsScreen() {
   const db = useSQLiteContext();
+  const { width } = useWindowDimensions();
+  const isTablet = width >= 600;
+  const palette = useThemeStore((s) => s.palette);
+  const isDarkMode = useThemeStore((s) => s.isDarkMode);
   const activeCashbook = useCashbookStore((state) => state.activeCashbook);
   const cashbookId = activeCashbook?.id ?? 1;
 
@@ -52,50 +58,75 @@ export default function DebtsScreen() {
   }
 
   return (
-    <View style={styles.container}>
-      <View style={styles.header}>
-        <Text style={styles.subTitle}>{activeCashbook?.name ?? 'Catatan'}</Text>
-        <Text style={styles.title}>Hutang & Piutang 🤝</Text>
+    <View style={[styles.container, { backgroundColor: palette.canvas }]}>
+      <Stack.Screen options={{ headerShown: false }} />
+
+      {/* Header */}
+      <View style={[styles.header, { backgroundColor: palette.card, borderBottomColor: palette.border }]}>
+        <View style={[styles.headerInner, isTablet && { maxWidth: 840, width: '100%', alignSelf: 'center' }]}>
+          <View style={styles.headerLeft}>
+            <Pressable
+              style={({ pressed }) => [styles.backBtn, { backgroundColor: palette.cardMuted }, pressed && { opacity: 0.7 }]}
+              onPress={() => router.back()}
+            >
+              <BackArrowIcon color={palette.ink} size={18} />
+            </Pressable>
+            <View>
+              <Text style={[styles.subTitle, { color: palette.primary }]}>{activeCashbook?.name ?? 'Catatan'}</Text>
+              <Text style={[styles.title, { color: palette.ink }]}>Hutang & Piutang 🤝</Text>
+            </View>
+          </View>
+
+          <Pressable
+            style={[styles.addTopBtn, { backgroundColor: palette.primary }]}
+            onPress={() => router.push('/add-debt')}
+          >
+            <Text style={styles.addTopBtnText}>+ Catat</Text>
+          </Pressable>
+        </View>
       </View>
 
-      <View style={styles.filterRow}>
-        <FilterChip label="Semua" selected={filter === 'all'} onPress={() => setFilter('all')} />
-        <FilterChip label="Hutang" selected={filter === 'debt'} onPress={() => setFilter('debt')} />
-        <FilterChip label="Piutang" selected={filter === 'receivable'} onPress={() => setFilter('receivable')} />
+      <View style={[styles.filterRow, { backgroundColor: palette.card, borderBottomColor: palette.border }]}>
+        <View style={[styles.filterInner, isTablet && { maxWidth: 840, width: '100%', alignSelf: 'center' }]}>
+          <FilterChip label="Semua" selected={filter === 'all'} onPress={() => setFilter('all')} />
+          <FilterChip label="Hutang" selected={filter === 'debt'} onPress={() => setFilter('debt')} />
+          <FilterChip label="Piutang" selected={filter === 'receivable'} onPress={() => setFilter('receivable')} />
+        </View>
       </View>
 
       <FlatList
         data={debts}
         keyExtractor={(item) => item.id.toString()}
         renderItem={({ item }) => (
-          <DebtCard
-            {...item}
-            onTogglePaid={() => handleTogglePaid(item.id)}
-            onPayInstallment={() => router.push({ pathname: '/debt-detail', params: { id: item.id.toString() } })}
-            onLongPress={() => handleDelete(item.id, item.person_name)}
-            onDelete={() => handleDelete(item.id, item.person_name)}
-          />
+          <View style={[styles.cardContainer, isTablet && { maxWidth: 840, width: '100%', alignSelf: 'center' }]}>
+            <DebtCard
+              {...item}
+              onTogglePaid={() => handleTogglePaid(item.id)}
+              onPayInstallment={() => router.push({ pathname: '/debt-detail', params: { id: item.id.toString() } })}
+              onEdit={() => router.push({ pathname: '/add-debt', params: { id: item.id.toString() } })}
+              onLongPress={() => handleDelete(item.id, item.person_name)}
+              onDelete={() => handleDelete(item.id, item.person_name)}
+            />
+          </View>
         )}
         ListEmptyComponent={
           <EmptyState
             icon="🤝"
             title="Belum ada hutang/piutang"
             subtitle={`Belum ada catatan hutang piutang di ${activeCashbook?.name ?? 'catatan ini'}`}
+            isDark={isDarkMode}
           />
         }
-        contentContainerStyle={debts.length === 0 ? styles.emptyList : styles.listContent}
-      />
-
-      <Pressable
-        style={({ pressed }) => [
-          styles.fab,
-          { backgroundColor: activeCashbook?.color ?? PALETTE.primary },
-          pressed && { transform: [{ scale: 0.95 }] },
+        contentContainerStyle={[
+          styles.listContent,
+          debts.length === 0 && { flexGrow: 1 },
         ]}
-        onPress={() => router.push('/add-debt')}
-      >
-        <Text style={styles.fabText}>+</Text>
-      </Pressable>
+        ListFooterComponent={
+          <View style={styles.footerWrap}>
+            <Text style={[styles.footerText, { color: palette.inkMuted }]}>© 2026 CatatKu</Text>
+          </View>
+        }
+      />
 
       <ModernConfirmModal
         visible={!!deleteTarget}
@@ -113,34 +144,73 @@ export default function DebtsScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: PALETTE.canvas },
-  header: { paddingTop: 60, paddingHorizontal: 20, paddingBottom: 12, backgroundColor: PALETTE.card },
-  subTitle: { fontSize: 13, fontWeight: '700', color: PALETTE.primary },
-  title: { fontSize: 24, fontWeight: '800', color: PALETTE.ink, marginTop: 2 },
-  filterRow: {
-    flexDirection: 'row',
+  container: { flex: 1 },
+  header: {
+    paddingTop: 50,
     paddingHorizontal: 20,
-    paddingVertical: 12,
-    backgroundColor: PALETTE.card,
+    paddingBottom: 16,
     borderBottomWidth: 1,
-    borderBottomColor: PALETTE.border,
   },
-  emptyList: { flexGrow: 1 },
-  listContent: { paddingBottom: 90 },
-  fab: {
-    position: 'absolute',
-    right: 20,
-    bottom: 24,
-    width: 56,
-    height: 56,
-    borderRadius: 28,
+  headerInner: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  headerLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  backBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 12,
     justifyContent: 'center',
     alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.25,
-    shadowRadius: 8,
-    elevation: 5,
   },
-  fabText: { color: '#FFFFFF', fontSize: 28, fontWeight: '600', marginTop: -2 },
+  subTitle: {
+    fontFamily: FONTS.sansBold,
+    fontSize: 11,
+    textTransform: 'uppercase',
+  },
+  title: {
+    fontFamily: FONTS.serifTitle,
+    fontSize: 18,
+    fontWeight: '800',
+  },
+  addTopBtn: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 10,
+  },
+  addTopBtnText: {
+    fontFamily: FONTS.sansBold,
+    fontSize: 12,
+    color: '#FAF8F5',
+  },
+  filterRow: {
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+  },
+  filterInner: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  cardContainer: {
+    width: '100%',
+  },
+  listContent: {
+    paddingBottom: 40,
+    paddingTop: 8,
+  },
+  footerWrap: {
+    alignItems: 'center',
+    paddingVertical: 24,
+    marginTop: 'auto',
+  },
+  footerText: {
+    fontFamily: FONTS.sansRegular,
+    fontSize: 12,
+  },
 });

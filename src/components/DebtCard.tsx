@@ -2,10 +2,12 @@ import { View, Text, StyleSheet, Pressable } from 'react-native';
 import { type DebtWithPayments } from '../database/queries';
 import { formatRupiah } from '../utils/currency';
 import { formatDate } from '../utils/date';
+import { EditActionIcon } from './ActionIcons';
 
 interface Props extends DebtWithPayments {
   onTogglePaid: () => void;
   onPayInstallment: () => void;
+  onEdit?: () => void;
   onLongPress: () => void;
   onDelete?: () => void;
 }
@@ -104,6 +106,15 @@ export default function DebtCard(props: Props) {
             {isPaid ? 'Batal Lunas' : 'Tandai Lunas'}
           </Text>
         </Pressable>
+        {props.onEdit && (
+          <Pressable
+            style={({ pressed }) => [styles.deleteBtn, { backgroundColor: '#F1F5F9' }, pressed && { opacity: 0.7 }]}
+            onPress={props.onEdit}
+            hitSlop={6}
+          >
+            <EditActionIcon color="#0F766E" size={15} />
+          </Pressable>
+        )}
         {props.onDelete && (
           <Pressable
             style={({ pressed }) => [styles.deleteBtn, pressed && { opacity: 0.7 }]}
