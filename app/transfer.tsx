@@ -1,4 +1,4 @@
-import { View, Text, StyleSheet, Pressable, ScrollView, TextInput, Alert } from 'react-native';
+import { View, Text, StyleSheet, Pressable, ScrollView, TextInput } from 'react-native';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useCallback, useState } from 'react';
 import { useFocusEffect, Stack, router } from 'expo-router';
@@ -6,6 +6,7 @@ import { getAccounts, addTransfer, getTransfers, type AccountWithCalculatedBalan
 import { useCashbookStore } from '../src/stores/useCashbookStore';
 import { getToday, formatDate } from '../src/utils/date';
 import { formatRupiah } from '../src/utils/currency';
+import { ModernConfirmModal, type ModalType } from '../src/components/ModernConfirmModal';
 
 export default function TransferScreen() {
   const db = useSQLiteContext();
@@ -20,6 +21,29 @@ export default function TransferScreen() {
   const [note, setNote] = useState('');
   const [date, setDate] = useState(getToday());
   const [transfers, setTransfers] = useState<Transfer[]>([]);
+
+  const [modalState, setModalState] = useState<{
+    visible: boolean;
+    type: ModalType;
+    icon?: string;
+    title: string;
+    message: string;
+  }>({
+    visible: false,
+    type: 'info',
+    title: '',
+    message: '',
+  });
+
+  const showModal = (title: string, message: string, type: ModalType = 'info', icon?: string) => {
+    setModalState({
+      visible: true,
+      type,
+      icon,
+      title,
+      message,
+    });
+  };
 
   useFocusEffect(
     useCallback(() => {
@@ -42,17 +66,17 @@ export default function TransferScreen() {
 
   async function handleTransfer() {
     if (!fromAccountId || !toAccountId) {
-      Alert.alert('Perhatian', 'Pilih akun asal dan akun tujuan');
+      showModal('Perhatian', 'Pilih akun asal dan akun tujuan', 'warning');
       return;
     }
     if (fromAccountId === toAccountId) {
-      Alert.alert('Perhatian', 'Akun asal dan tujuan tidak boleh sama');
+      showModal('Perhatian', 'Akun asal dan tujuan tidak boleh sama', 'warning');
       return;
     }
 
     const numAmount = parseFloat(amount);
     if (!numAmount || numAmount <= 0) {
-      Alert.alert('Perhatian', 'Masukkan nominal transfer yang valid');
+      showModal('Perhatian', 'Masukkan nominal transfer yang valid', 'warning');
       return;
     }
 
@@ -71,7 +95,7 @@ export default function TransferScreen() {
     setAmount('');
     setFee('');
     setNote('');
-    Alert.alert('Berhasil', 'Transfer saldo berhasil dicatat');
+    showModal('Berhasil', 'Transfer saldo berhasil dicatat', 'success', '💸');
     loadData();
   }
 
@@ -207,6 +231,17 @@ export default function TransferScreen() {
           ))
         )}
       </ScrollView>
+
+      <ModernConfirmModal
+        visible={modalState.visible}
+        type={modalState.type}
+        icon={modalState.icon}
+        title={modalState.title}
+        message={modalState.message}
+        confirmText="Mengerti"
+        cancelText=""
+        onConfirm={() => setModalState((prev) => ({ ...prev, visible: false }))}
+      />
     </>
   );
 }

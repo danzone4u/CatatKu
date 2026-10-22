@@ -5,7 +5,6 @@ import {
   TextInput,
   Pressable,
   ScrollView,
-  Alert,
   Image,
   Modal,
 } from 'react-native';
@@ -27,6 +26,7 @@ import { useThemeStore } from '../src/stores/useThemeStore';
 import { getNowFull, formatDate } from '../src/utils/date';
 import { FONTS } from '../src/constants/theme';
 import DatePickerModal from '../src/components/DatePickerModal';
+import { ModernConfirmModal, type ModalType } from '../src/components/ModernConfirmModal';
 
 interface QuickTemplate {
   label: string;
@@ -68,6 +68,29 @@ export default function AddTransactionScreen() {
   // Modal states
   const [showReceiptModal, setShowReceiptModal] = useState(false);
   const [viewReceiptFullscreen, setViewReceiptFullscreen] = useState(false);
+
+  const [modalAlert, setModalAlert] = useState<{
+    visible: boolean;
+    title: string;
+    message: string;
+    type: ModalType;
+    icon?: string;
+  }>({
+    visible: false,
+    title: '',
+    message: '',
+    type: 'warning',
+  });
+
+  const showAlert = (title: string, message: string, type: ModalType = 'warning', icon?: string) => {
+    setModalAlert({
+      visible: true,
+      title,
+      message,
+      type,
+      icon,
+    });
+  };
   const [showDatePicker, setShowDatePicker] = useState(false);
 
   const loadInitial = useCallback(async () => {
@@ -129,9 +152,11 @@ export default function AddTransactionScreen() {
     try {
       const perm = await ImagePicker.requestCameraPermissionsAsync();
       if (!perm.granted) {
-        Alert.alert(
+        showAlert(
           'Izin Kamera Dibutuhkan',
-          'Mohon izinkan akses kamera di pengaturan perangkat untuk memotret nota/struk.'
+          'Mohon izinkan akses kamera di pengaturan perangkat untuk memotret nota/struk.',
+          'warning',
+          '📷'
         );
         return;
       }
@@ -144,7 +169,7 @@ export default function AddTransactionScreen() {
         setReceiptImage(res.assets[0].uri);
       }
     } catch {
-      Alert.alert('Gagal Membuka Kamera', 'Terjadi kendala saat membuka kamera.');
+      showAlert('Gagal Membuka Kamera', 'Terjadi kendala saat membuka kamera.', 'danger');
     }
   }
 
@@ -159,18 +184,18 @@ export default function AddTransactionScreen() {
         setReceiptImage(res.assets[0].uri);
       }
     } catch {
-      Alert.alert('Gagal Membuka Galeri', 'Terjadi kendala saat membuka galeri foto.');
+      showAlert('Gagal Membuka Galeri', 'Terjadi kendala saat membuka galeri foto.', 'danger');
     }
   }
 
   async function handleSave() {
     const numAmount = parseFloat(amount);
     if (!numAmount || numAmount <= 0) {
-      Alert.alert('Error', 'Masukkan jumlah yang valid');
+      showAlert('Error', 'Masukkan jumlah yang valid', 'warning');
       return;
     }
     if (!categoryId) {
-      Alert.alert('Error', 'Pilih kategori terlebih dahulu');
+      showAlert('Error', 'Pilih kategori terlebih dahulu', 'warning');
       return;
     }
 
@@ -200,7 +225,7 @@ export default function AddTransactionScreen() {
       }
       router.back();
     } catch {
-      Alert.alert('Error', 'Gagal menyimpan transaksi');
+      showAlert('Error', 'Gagal menyimpan transaksi', 'danger');
     }
   }
 
@@ -598,6 +623,18 @@ export default function AddTransactionScreen() {
           </View>
         </View>
       </Modal>
+
+      {/* Modern Alert Modal */}
+      <ModernConfirmModal
+        visible={modalAlert.visible}
+        type={modalAlert.type}
+        icon={modalAlert.icon}
+        title={modalAlert.title}
+        message={modalAlert.message}
+        confirmText="Mengerti"
+        cancelText=""
+        onConfirm={() => setModalAlert((prev) => ({ ...prev, visible: false }))}
+      />
     </View>
   );
 }

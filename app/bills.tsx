@@ -7,7 +7,6 @@ import {
   Pressable,
   Modal,
   TextInput,
-  Alert,
   ScrollView,
   useWindowDimensions,
 } from 'react-native';
@@ -33,6 +32,7 @@ import { getNowFull } from '../src/utils/date';
 import { FONTS } from '../src/constants/theme';
 import { BackArrowIcon, EditActionIcon } from '../src/components/ActionIcons';
 import DatePickerModal from '../src/components/DatePickerModal';
+import { ModernConfirmModal, type ModalType } from '../src/components/ModernConfirmModal';
 
 export default function BillsScreen() {
   const db = useSQLiteContext();
@@ -60,6 +60,36 @@ export default function BillsScreen() {
   // Modal Bayar Tagihan
   const [payingBill, setPayingBill] = useState<MonthlyBill | null>(null);
   const [payAccId, setPayAccId] = useState<number | null>(null);
+
+  const [confirmModal, setConfirmModal] = useState<{
+    visible: boolean;
+    type: ModalType;
+    icon?: string;
+    title: string;
+    message: string;
+    cancelText?: string;
+    confirmText?: string;
+    onConfirm: () => void;
+  }>({
+    visible: false,
+    type: 'warning',
+    title: '',
+    message: '',
+    onConfirm: () => {},
+  });
+
+  const showAlert = (title: string, message: string, type: ModalType = 'warning', icon?: string) => {
+    setConfirmModal({
+      visible: true,
+      type,
+      icon,
+      title,
+      message,
+      confirmText: 'Mengerti',
+      cancelText: '',
+      onConfirm: () => setConfirmModal((prev) => ({ ...prev, visible: false })),
+    });
+  };
 
   const today = new Date();
   const currentMonthStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
@@ -118,15 +148,15 @@ export default function BillsScreen() {
     const numAmount = parseRupiahInput(amount);
 
     if (!name.trim()) {
-      Alert.alert('Perhatian', 'Nama tagihan wajib diisi');
+      showAlert('Perhatian', 'Nama tagihan wajib diisi', 'warning');
       return;
     }
     if (!numAmount || numAmount <= 0) {
-      Alert.alert('Perhatian', 'Nominal tagihan harus lebih dari 0');
+      showAlert('Perhatian', 'Nominal tagihan harus lebih dari 0', 'warning');
       return;
     }
     if (dueDay < 1 || dueDay > 31) {
-      Alert.alert('Perhatian', 'Tanggal jatuh tempo harus antara 1 - 31');
+      showAlert('Perhatian', 'Tanggal jatuh tempo harus antara 1 - 31', 'warning');
       return;
     }
 
@@ -153,7 +183,7 @@ export default function BillsScreen() {
       setShowFormModal(false);
       loadData();
     } catch {
-      Alert.alert('Error', 'Gagal menyimpan tagihan');
+      showAlert('Error', 'Gagal menyimpan tagihan', 'danger');
     }
   };
 
@@ -161,27 +191,31 @@ export default function BillsScreen() {
     if (!payingBill || !payAccId) return;
 
     try {
+      const billName = payingBill.name;
       await payMonthlyBill(db, payingBill.id, currentMonthStr, payAccId, getNowFull());
-      Alert.alert('Sukses', `Tagihan "${payingBill.name}" bulan ini berhasil dibayar dan dicatat sebagai pengeluaran.`);
       setPayingBill(null);
       loadData();
+      showAlert('Sukses', `Tagihan "${billName}" bulan ini berhasil dibayar dan dicatat sebagai pengeluaran.`, 'success', '🎉');
     } catch {
-      Alert.alert('Error', 'Gagal memproses pembayaran tagihan');
+      showAlert('Error', 'Gagal memproses pembayaran tagihan', 'danger');
     }
   };
 
   const handleDelete = (bill: MonthlyBill) => {
-    Alert.alert('Hapus Tagihan', `Yakin ingin menghapus jadwal tagihan "${bill.name}"?`, [
-      { text: 'Batal', style: 'cancel' },
-      {
-        text: 'Hapus',
-        style: 'destructive',
-        onPress: async () => {
-          await deleteMonthlyBill(db, bill.id);
-          loadData();
-        },
+    setConfirmModal({
+      visible: true,
+      type: 'danger',
+      icon: '🗑️',
+      title: 'Hapus Tagihan',
+      message: `Yakin ingin menghapus jadwal tagihan "${bill.name}"?`,
+      cancelText: 'Batal',
+      confirmText: 'Ya, Hapus',
+      onConfirm: async () => {
+        setConfirmModal((prev) => ({ ...prev, visible: false }));
+        await deleteMonthlyBill(db, bill.id);
+        loadData();
       },
-    ]);
+    });
   };
 
   // Helper date string untuk DatePickerModal
@@ -459,6 +493,19 @@ export default function BillsScreen() {
           </View>
         </View>
       </Modal>
+
+      {/* Modern Confirm/Alert Modal */}
+      <ModernConfirmModal
+        visible={confirmModal.visible}
+        type={confirmModal.type}
+        icon={confirmModal.icon}
+        title={confirmModal.title}
+        message={confirmModal.message}
+        confirmText={confirmModal.confirmText}
+        cancelText={confirmModal.cancelText}
+        onCancel={() => setConfirmModal((prev) => ({ ...prev, visible: false }))}
+        onConfirm={confirmModal.onConfirm}
+      />
     </View>
   );
 }

@@ -1,4 +1,4 @@
-import { View, Text, StyleSheet, Pressable, ScrollView, TextInput, Alert, FlatList } from 'react-native';
+import { View, Text, StyleSheet, Pressable, ScrollView, TextInput, FlatList } from 'react-native';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useCallback, useState } from 'react';
 import { useFocusEffect, Stack, useLocalSearchParams, router } from 'expo-router';
@@ -13,6 +13,7 @@ import {
 } from '../src/database/queries';
 import { formatRupiah } from '../src/utils/currency';
 import { formatDate, getToday } from '../src/utils/date';
+import { ModernConfirmModal, type ModalType } from '../src/components/ModernConfirmModal';
 
 export default function DebtDetailScreen() {
   const db = useSQLiteContext();
@@ -29,6 +30,29 @@ export default function DebtDetailScreen() {
   const [selectedAccountId, setSelectedAccountId] = useState<number | null>(null);
   const [note, setNote] = useState('');
   const [date, setDate] = useState(getToday());
+
+  const [modalAlert, setModalAlert] = useState<{
+    visible: boolean;
+    title: string;
+    message: string;
+    type: ModalType;
+    icon?: string;
+  }>({
+    visible: false,
+    title: '',
+    message: '',
+    type: 'warning',
+  });
+
+  const showAlert = (title: string, message: string, type: ModalType = 'warning', icon?: string) => {
+    setModalAlert({
+      visible: true,
+      title,
+      message,
+      type,
+      icon,
+    });
+  };
 
   useFocusEffect(
     useCallback(() => {
@@ -54,18 +78,18 @@ export default function DebtDetailScreen() {
 
   async function handleAddPayment() {
     if (!selectedAccountId) {
-      Alert.alert('Perhatian', 'Pilih dompet / akun sumber pembayaran');
+      showAlert('Perhatian', 'Pilih dompet / akun sumber pembayaran', 'warning');
       return;
     }
 
     const numAmount = parseFloat(amount);
     if (!numAmount || numAmount <= 0) {
-      Alert.alert('Perhatian', 'Masukkan nominal cicilan yang valid');
+      showAlert('Perhatian', 'Masukkan nominal cicilan yang valid', 'warning');
       return;
     }
 
     if (debt && numAmount > debt.remaining_amount) {
-      Alert.alert('Perhatian', `Nominal cicilan melebihi sisa tagihan (${formatRupiah(debt.remaining_amount)})`);
+      showAlert('Perhatian', `Nominal cicilan melebihi sisa tagihan (${formatRupiah(debt.remaining_amount)})`, 'warning');
       return;
     }
 
@@ -234,6 +258,17 @@ export default function DebtDetailScreen() {
           ))
         )}
       </ScrollView>
+
+      <ModernConfirmModal
+        visible={modalAlert.visible}
+        type={modalAlert.type}
+        icon={modalAlert.icon}
+        title={modalAlert.title}
+        message={modalAlert.message}
+        confirmText="Mengerti"
+        cancelText=""
+        onConfirm={() => setModalAlert((prev) => ({ ...prev, visible: false }))}
+      />
     </>
   );
 }

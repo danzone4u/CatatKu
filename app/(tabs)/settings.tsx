@@ -4,7 +4,6 @@ import {
   StyleSheet,
   ScrollView,
   Pressable,
-  Alert,
   TextInput,
   useWindowDimensions,
 } from 'react-native';
@@ -66,6 +65,28 @@ export default function SettingsScreen() {
     setConfirmModal((prev) => ({ ...prev, visible: false }));
   };
 
+  const showAlert = (
+    title: string,
+    message: string,
+    type: ModalType = 'warning',
+    icon?: string,
+    onConfirm?: () => void
+  ) => {
+    setConfirmModal({
+      visible: true,
+      type,
+      icon,
+      title,
+      message,
+      confirmText: 'Mengerti',
+      cancelText: '',
+      onConfirm: () => {
+        closeConfirmModal();
+        if (onConfirm) onConfirm();
+      },
+    });
+  };
+
   const loadData = useCallback(async () => {
     try {
       const cats = await getCategories(db);
@@ -83,7 +104,7 @@ export default function SettingsScreen() {
 
   async function handleAddCategory() {
     if (!newCatName.trim()) {
-      Alert.alert('Perhatian', 'Nama kategori wajib diisi');
+      showAlert('Perhatian', 'Nama kategori wajib diisi', 'warning');
       return;
     }
     await addCategory(db, newCatName.trim(), selectedEmoji);
@@ -135,7 +156,7 @@ export default function SettingsScreen() {
   async function handleDeleteBook() {
     if (!activeCashbook) return;
     if (activeCashbook.is_default === 1) {
-      Alert.alert('Perhatian', 'Buku catatan bawaan utama tidak dapat dihapus.');
+      showAlert('Perhatian', 'Buku catatan bawaan utama tidak dapat dihapus.', 'warning');
       return;
     }
 
@@ -226,7 +247,7 @@ export default function SettingsScreen() {
             try {
               await exportSingleCashbook(db, activeCashbook.id);
             } catch {
-              Alert.alert('Gagal', 'Terjadi kesalahan saat membagikan catatan.');
+              showAlert('Gagal', 'Terjadi kesalahan saat membagikan catatan.', 'danger');
             }
           }}
         >
@@ -258,12 +279,13 @@ export default function SettingsScreen() {
                 const text = await file.text();
                 const res = await importSingleCashbook(db, text);
                 if (res) {
-                  Alert.alert('Sukses', `Buku catatan baru "${res.cashbookName}" berhasil diimpor!`);
-                  router.replace('/');
+                  showAlert('Sukses', `Buku catatan baru "${res.cashbookName}" berhasil diimpor!`, 'success', '🎉', () => {
+                    router.replace('/');
+                  });
                 }
               }
             } catch (err: any) {
-              Alert.alert('Gagal', err?.message || 'Berkas backup catatan tidak valid.');
+              showAlert('Gagal', err?.message || 'Berkas backup catatan tidak valid.', 'danger');
             }
           }}
         >

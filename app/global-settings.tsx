@@ -5,7 +5,6 @@ import {
   ScrollView,
   Pressable,
   Switch,
-  Alert,
   TextInput,
   Modal,
   useWindowDimensions,
@@ -56,6 +55,7 @@ export default function GlobalSettingsScreen() {
     message: string;
     cancelText?: string;
     confirmText?: string;
+    onCancel?: () => void;
     onConfirm: () => Promise<void> | void;
   }>({
     visible: false,
@@ -64,6 +64,28 @@ export default function GlobalSettingsScreen() {
     message: '',
     onConfirm: () => {},
   });
+
+  const showModalAlert = (
+    title: string,
+    message: string,
+    type: ModalType = 'info',
+    icon?: string,
+    onConfirm?: () => void
+  ) => {
+    setConfirmModal({
+      visible: true,
+      type,
+      icon,
+      title,
+      message,
+      confirmText: 'Mengerti',
+      cancelText: '',
+      onConfirm: () => {
+        closeConfirmModal();
+        if (onConfirm) onConfirm();
+      },
+    });
+  };
 
   const closeConfirmModal = () => {
     setConfirmModal((prev) => ({ ...prev, visible: false }));
@@ -115,14 +137,14 @@ export default function GlobalSettingsScreen() {
 
   async function handleSavePin() {
     if (newPin.length !== 4 && newPin.length !== 6) {
-      Alert.alert('Perhatian', 'PIN harus berupa 4 atau 6 digit angka');
+      showModalAlert('Perhatian', 'PIN harus berupa 4 atau 6 digit angka', 'warning');
       return;
     }
     await setSetting(db, 'app_pin', newPin);
     setPinEnabled(true);
     setShowPinInput(false);
     setNewPin('');
-    Alert.alert('Sukses', 'PIN keamanan berhasil diaktifkan.');
+    showModalAlert('Sukses', 'PIN keamanan berhasil diaktifkan.', 'success', '🔒');
   }
 
   async function handleToggleBiometric(val: boolean) {
@@ -234,7 +256,7 @@ export default function GlobalSettingsScreen() {
               try {
                 await exportBackup(db);
               } catch {
-                Alert.alert('Gagal', 'Terjadi kesalahan saat membagikan backup.');
+                showModalAlert('Gagal', 'Terjadi kesalahan saat membagikan backup.', 'danger');
               }
             }}
           >
@@ -259,9 +281,9 @@ export default function GlobalSettingsScreen() {
             onPress={async () => {
               try {
                 const res = await exportBackupToLocalStorage(db);
-                Alert.alert('Cadangan Tersimpan', `Berkas cadangan berhasil disimpan:\n${res.filename} (Folder: ${res.directoryName || 'Dokumen'})`);
+                showModalAlert('Cadangan Tersimpan', `Berkas cadangan berhasil disimpan:\n${res.filename} (Folder: ${res.directoryName || 'Dokumen'})`, 'success', '💾');
               } catch {
-                Alert.alert('Gagal', 'Tidak dapat menyimpan cadangan di penyimpanan lokal.');
+                showModalAlert('Gagal', 'Tidak dapat menyimpan cadangan di penyimpanan lokal.', 'danger');
               }
             }}
           >
@@ -305,11 +327,11 @@ export default function GlobalSettingsScreen() {
                       const text = await file.text();
                       const res = await restoreBackup(db, text);
                       if (res.success) {
-                        Alert.alert('Sukses', `Data berhasil dipulihkan! Total ${res.count} catatan.`);
+                        showModalAlert('Sukses', `Data berhasil dipulihkan! Total ${res.count} catatan.`, 'success', '🎉');
                       }
                     }
                   } catch (err: any) {
-                    Alert.alert('Gagal', err?.message || 'Gagal memulihkan cadangan.');
+                    showModalAlert('Gagal', err?.message || 'Gagal memulihkan cadangan.', 'danger');
                   }
                 },
               });

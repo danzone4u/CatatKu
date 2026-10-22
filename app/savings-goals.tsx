@@ -5,7 +5,6 @@ import {
   Pressable,
   ScrollView,
   TextInput,
-  Alert,
   Switch,
   useWindowDimensions,
 } from 'react-native';
@@ -27,7 +26,7 @@ import { useThemeStore } from '../src/stores/useThemeStore';
 import { formatRupiah, formatNumberThousand, parseRupiahInput } from '../src/utils/currency';
 import { formatDate } from '../src/utils/date';
 import { FONTS } from '../src/constants/theme';
-import { ModernConfirmModal } from '../src/components/ModernConfirmModal';
+import { ModernConfirmModal, type ModalType } from '../src/components/ModernConfirmModal';
 import { EditActionIcon, BackArrowIcon } from '../src/components/ActionIcons';
 import DatePickerModal from '../src/components/DatePickerModal';
 
@@ -62,6 +61,29 @@ export default function SavingsGoalsScreen() {
   const [selectedEmoji, setSelectedEmoji] = useState('🎯');
   const [selectedColor, setSelectedColor] = useState('#0F766E');
   const [showDatePicker, setShowDatePicker] = useState(false);
+
+  const [modalAlert, setModalAlert] = useState<{
+    visible: boolean;
+    title: string;
+    message: string;
+    type: ModalType;
+    icon?: string;
+  }>({
+    visible: false,
+    title: '',
+    message: '',
+    type: 'warning',
+  });
+
+  const showAlert = (title: string, message: string, type: ModalType = 'warning', icon?: string) => {
+    setModalAlert({
+      visible: true,
+      title,
+      message,
+      type,
+      icon,
+    });
+  };
 
   // Modal Setor / Tarik Tabungan
   const [activeGoal, setActiveGoal] = useState<SavingsGoal | null>(null);
@@ -121,13 +143,13 @@ export default function SavingsGoalsScreen() {
 
   async function handleSaveGoal() {
     if (!name.trim()) {
-      Alert.alert('Perhatian', 'Nama target impian wajib diisi');
+      showAlert('Perhatian', 'Nama target impian wajib diisi', 'warning');
       return;
     }
 
     const targetNum = parseRupiahInput(targetAmount);
     if (!targetNum || targetNum <= 0) {
-      Alert.alert('Perhatian', 'Masukkan nominal target tabungan yang valid');
+      showAlert('Perhatian', 'Masukkan nominal target tabungan yang valid', 'warning');
       return;
     }
 
@@ -172,12 +194,12 @@ export default function SavingsGoalsScreen() {
 
     const num = parseRupiahInput(amountInput);
     if (!num || num <= 0) {
-      Alert.alert('Perhatian', 'Masukkan nominal yang valid');
+      showAlert('Perhatian', 'Masukkan nominal yang valid', 'warning');
       return;
     }
 
     if (actionType === 'withdraw' && num > activeGoal.current_amount) {
-      Alert.alert('Perhatian', 'Nominal penarikan melebihi saldo tabungan saat ini');
+      showAlert('Perhatian', 'Nominal penarikan melebihi saldo tabungan saat ini', 'warning');
       return;
     }
 
@@ -607,6 +629,18 @@ export default function SavingsGoalsScreen() {
         confirmText="Ya, Hapus"
         onCancel={() => setDeleteTarget(null)}
         onConfirm={confirmDeleteGoal}
+      />
+
+      {/* Modern Alert Modal */}
+      <ModernConfirmModal
+        visible={modalAlert.visible}
+        type={modalAlert.type}
+        icon={modalAlert.icon}
+        title={modalAlert.title}
+        message={modalAlert.message}
+        confirmText="Mengerti"
+        cancelText=""
+        onConfirm={() => setModalAlert((prev) => ({ ...prev, visible: false }))}
       />
     </View>
   );

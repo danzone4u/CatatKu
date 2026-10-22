@@ -1,4 +1,4 @@
-import { View, Text, StyleSheet, Pressable, ScrollView, TextInput, Alert } from 'react-native';
+import { View, Text, StyleSheet, Pressable, ScrollView, TextInput } from 'react-native';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useCallback, useState } from 'react';
 import { useFocusEffect, Stack } from 'expo-router';
@@ -13,6 +13,7 @@ import {
 import { useCashbookStore } from '../src/stores/useCashbookStore';
 import { getCurrentMonth, getMonthName } from '../src/utils/date';
 import { formatRupiah } from '../src/utils/currency';
+import { ModernConfirmModal, type ModalType } from '../src/components/ModernConfirmModal';
 
 export default function CategoryBudgetsScreen() {
   const db = useSQLiteContext();
@@ -25,6 +26,36 @@ export default function CategoryBudgetsScreen() {
   const [selectedCatId, setSelectedCatId] = useState<number | null>(null);
   const [limitAmount, setLimitAmount] = useState('');
   const [showAddForm, setShowAddForm] = useState(false);
+
+  const [confirmModal, setConfirmModal] = useState<{
+    visible: boolean;
+    type: ModalType;
+    icon?: string;
+    title: string;
+    message: string;
+    cancelText?: string;
+    confirmText?: string;
+    onConfirm: () => void;
+  }>({
+    visible: false,
+    type: 'warning',
+    title: '',
+    message: '',
+    onConfirm: () => {},
+  });
+
+  const showAlert = (title: string, message: string, type: ModalType = 'warning', icon?: string) => {
+    setConfirmModal({
+      visible: true,
+      type,
+      icon,
+      title,
+      message,
+      confirmText: 'Mengerti',
+      cancelText: '',
+      onConfirm: () => setConfirmModal((prev) => ({ ...prev, visible: false })),
+    });
+  };
 
   useFocusEffect(
     useCallback(() => {
@@ -46,13 +77,13 @@ export default function CategoryBudgetsScreen() {
 
   async function handleSaveBudget() {
     if (!selectedCatId) {
-      Alert.alert('Perhatian', 'Pilih kategori anggaran');
+      showAlert('Perhatian', 'Pilih kategori anggaran', 'warning');
       return;
     }
 
     const numLimit = parseFloat(limitAmount);
     if (!numLimit || numLimit <= 0) {
-      Alert.alert('Perhatian', 'Masukkan nominal batas anggaran');
+      showAlert('Perhatian', 'Masukkan nominal batas anggaran', 'warning');
       return;
     }
 
@@ -70,17 +101,20 @@ export default function CategoryBudgetsScreen() {
   }
 
   async function handleDeleteBudget(id: number, catName: string) {
-    Alert.alert('Hapus Anggaran', `Hapus batas anggaran kategori \"${catName}\"?`, [
-      { text: 'Batal', style: 'cancel' },
-      {
-        text: 'Hapus',
-        style: 'destructive',
-        onPress: async () => {
-          await deleteCategoryBudget(db, id);
-          loadData();
-        },
+    setConfirmModal({
+      visible: true,
+      type: 'danger',
+      icon: '🗑️',
+      title: 'Hapus Anggaran',
+      message: `Hapus batas anggaran kategori "${catName}"?`,
+      cancelText: 'Batal',
+      confirmText: 'Hapus',
+      onConfirm: async () => {
+        setConfirmModal((prev) => ({ ...prev, visible: false }));
+        await deleteCategoryBudget(db, id);
+        loadData();
       },
-    ]);
+    });
   }
 
   const totalBudgeted = budgets.reduce((sum, b) => sum + b.monthly_limit, 0);
@@ -195,6 +229,18 @@ export default function CategoryBudgetsScreen() {
           })
         )}
       </ScrollView>
+
+      <ModernConfirmModal
+        visible={confirmModal.visible}
+        type={confirmModal.type}
+        icon={confirmModal.icon}
+        title={confirmModal.title}
+        message={confirmModal.message}
+        confirmText={confirmModal.confirmText}
+        cancelText={confirmModal.cancelText}
+        onCancel={() => setConfirmModal((prev) => ({ ...prev, visible: false }))}
+        onConfirm={confirmModal.onConfirm}
+      />
     </>
   );
 }

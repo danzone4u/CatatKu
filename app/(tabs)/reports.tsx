@@ -7,7 +7,6 @@ import {
   Pressable,
   RefreshControl,
   Dimensions,
-  Alert,
 } from 'react-native';
 import Svg, { Path, Defs, LinearGradient, Stop, Rect, Text as SvgText } from 'react-native-svg';
 import * as Print from 'expo-print';
@@ -22,6 +21,7 @@ import { getSavingsGoals, type SavingsGoal } from '../../src/database/queries';
 import { formatRupiah } from '../../src/utils/currency';
 import { formatDate } from '../../src/utils/date';
 import { FONTS } from '../../src/constants/theme';
+import { ModernConfirmModal, type ModalType } from '../../src/components/ModernConfirmModal';
 
 type PeriodFilter = 'daily' | 'weekly' | 'monthly' | 'yearly';
 
@@ -59,6 +59,29 @@ export default function ReportsScreen() {
   const [categoryBreakdown, setCategoryBreakdown] = useState<CategoryReport[]>([]);
   const [trendData, setTrendData] = useState<TrendPoint[]>([]);
   const [savingsGoals, setSavingsGoals] = useState<SavingsGoal[]>([]);
+
+  const [modalAlert, setModalAlert] = useState<{
+    visible: boolean;
+    title: string;
+    message: string;
+    type: ModalType;
+    icon?: string;
+  }>({
+    visible: false,
+    title: '',
+    message: '',
+    type: 'info',
+  });
+
+  const showAlert = (title: string, message: string, type: ModalType = 'info', icon?: string) => {
+    setModalAlert({
+      visible: true,
+      title,
+      message,
+      type,
+      icon,
+    });
+  };
 
   // Format label periode
   const getPeriodLabel = () => {
@@ -408,10 +431,10 @@ export default function ReportsScreen() {
           dialogTitle: `Laporan Keuangan - ${periodTitle}`,
         });
       } else {
-        Alert.alert('Info', `PDF berhasil digenerate di: ${fileToShareUri}`);
+        showAlert('Info', `PDF berhasil digenerate di: ${fileToShareUri}`, 'info', '📄');
       }
     } catch {
-      Alert.alert('Gagal Ekspor', 'Terjadi kendala saat menghasilkan dokumen PDF.');
+      showAlert('Gagal Ekspor', 'Terjadi kendala saat menghasilkan dokumen PDF.', 'danger');
     } finally {
       setExportingPdf(false);
     }
@@ -754,6 +777,18 @@ export default function ReportsScreen() {
           )}
         </View>
       </ScrollView>
+
+      {/* Modern Alert Modal */}
+      <ModernConfirmModal
+        visible={modalAlert.visible}
+        type={modalAlert.type}
+        icon={modalAlert.icon}
+        title={modalAlert.title}
+        message={modalAlert.message}
+        confirmText="Mengerti"
+        cancelText=""
+        onConfirm={() => setModalAlert((prev) => ({ ...prev, visible: false }))}
+      />
     </View>
   );
 }

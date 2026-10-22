@@ -5,7 +5,6 @@ import {
   TextInput,
   Pressable,
   ScrollView,
-  Alert,
   useWindowDimensions,
 } from 'react-native';
 import { useSQLiteContext } from 'expo-sqlite';
@@ -27,6 +26,7 @@ import { getToday, formatDate } from '../src/utils/date';
 import { FONTS } from '../src/constants/theme';
 import { BackArrowIcon } from '../src/components/ActionIcons';
 import DatePickerModal from '../src/components/DatePickerModal';
+import { ModernConfirmModal, type ModalType } from '../src/components/ModernConfirmModal';
 
 export default function AddDebtScreen() {
   const db = useSQLiteContext();
@@ -52,6 +52,29 @@ export default function AddDebtScreen() {
   const [date, setDate] = useState(getToday());
 
   const [pickerTarget, setPickerTarget] = useState<'date' | 'dueDate' | null>(null);
+
+  const [modalAlert, setModalAlert] = useState<{
+    visible: boolean;
+    title: string;
+    message: string;
+    type: ModalType;
+    icon?: string;
+  }>({
+    visible: false,
+    title: '',
+    message: '',
+    type: 'warning',
+  });
+
+  const showAlert = (title: string, message: string, type: ModalType = 'warning', icon?: string) => {
+    setModalAlert({
+      visible: true,
+      title,
+      message,
+      type,
+      icon,
+    });
+  };
 
   useEffect(() => {
     loadCashbooksAndAccounts();
@@ -96,11 +119,11 @@ export default function AddDebtScreen() {
   async function handleSave() {
     const numAmount = parseRupiahInput(amount);
     if (!numAmount || numAmount <= 0) {
-      Alert.alert('Perhatian', 'Masukkan jumlah nominal yang valid');
+      showAlert('Perhatian', 'Masukkan jumlah nominal yang valid', 'warning');
       return;
     }
     if (!personName.trim()) {
-      Alert.alert('Perhatian', 'Masukkan nama pihak atau orang');
+      showAlert('Perhatian', 'Masukkan nama pihak atau orang', 'warning');
       return;
     }
 
@@ -333,6 +356,17 @@ export default function AddDebtScreen() {
           if (pickerTarget === 'dueDate') setDueDate(onlyDate);
         }}
         onClose={() => setPickerTarget(null)}
+      />
+
+      <ModernConfirmModal
+        visible={modalAlert.visible}
+        type={modalAlert.type}
+        icon={modalAlert.icon}
+        title={modalAlert.title}
+        message={modalAlert.message}
+        confirmText="Mengerti"
+        cancelText=""
+        onConfirm={() => setModalAlert((prev) => ({ ...prev, visible: false }))}
       />
     </View>
   );

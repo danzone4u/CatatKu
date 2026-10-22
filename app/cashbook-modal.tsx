@@ -1,10 +1,11 @@
-import { View, Text, StyleSheet, TextInput, Pressable, ScrollView, Alert } from 'react-native';
+import { View, Text, StyleSheet, TextInput, Pressable, ScrollView } from 'react-native';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useState, useEffect } from 'react';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { createCashbook, updateCashbook, getCashbookById } from '../src/database/queries';
 import { EMOJI_LIST } from '../src/constants/categories';
 import { PALETTE, FONTS } from '../src/constants/theme';
+import { ModernConfirmModal, type ModalType } from '../src/components/ModernConfirmModal';
 
 const COLOR_OPTIONS = [
   '#0F766E', '#0B3B4A', '#0D9488', '#059669', '#0284C7',
@@ -21,6 +22,29 @@ export default function CashbookModalScreen() {
   const [selectedColor, setSelectedColor] = useState('#0F766E');
   const [budgetLimit, setBudgetLimit] = useState('');
   const [bookType, setBookType] = useState<'personal' | 'organization' | 'business'>('personal');
+
+  const [modalAlert, setModalAlert] = useState<{
+    visible: boolean;
+    title: string;
+    message: string;
+    type: ModalType;
+    icon?: string;
+  }>({
+    visible: false,
+    title: '',
+    message: '',
+    type: 'warning',
+  });
+
+  const showAlert = (title: string, message: string, type: ModalType = 'warning', icon?: string) => {
+    setModalAlert({
+      visible: true,
+      title,
+      message,
+      type,
+      icon,
+    });
+  };
 
   useEffect(() => {
     if (isEdit) {
@@ -45,7 +69,7 @@ export default function CashbookModalScreen() {
 
   async function handleSave() {
     if (!name.trim()) {
-      Alert.alert('Perhatian', 'Nama Catatan wajib diisi');
+      showAlert('Perhatian', 'Nama Catatan wajib diisi', 'warning');
       return;
     }
 
@@ -188,6 +212,17 @@ export default function CashbookModalScreen() {
           <Text style={styles.saveBtnText}>{isEdit ? 'Simpan Perubahan' : 'Buat Catatan'}</Text>
         </Pressable>
       </ScrollView>
+
+      <ModernConfirmModal
+        visible={modalAlert.visible}
+        type={modalAlert.type}
+        icon={modalAlert.icon}
+        title={modalAlert.title}
+        message={modalAlert.message}
+        confirmText="Mengerti"
+        cancelText=""
+        onConfirm={() => setModalAlert((prev) => ({ ...prev, visible: false }))}
+      />
     </>
   );
 }

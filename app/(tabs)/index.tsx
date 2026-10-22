@@ -6,7 +6,6 @@ import {
   ScrollView,
   Pressable,
   Modal,
-  Alert,
   useWindowDimensions,
 } from 'react-native';
 import Svg, { Path, Circle, Defs, LinearGradient, Stop } from 'react-native-svg';
@@ -42,6 +41,7 @@ import {
   CustomizeActionIcon,
   BackArrowIcon,
 } from '../../src/components/ActionIcons';
+import { ModernConfirmModal, type ModalType } from '../../src/components/ModernConfirmModal';
 
 interface ShortcutItem {
   id: string;
@@ -86,6 +86,29 @@ export default function DashboardScreen() {
   const [activeShortcutIds, setActiveShortcutIds] = useState<string[]>(DEFAULT_SHORTCUT_IDS);
   const [showCustomizeModal, setShowCustomizeModal] = useState(false);
   const [tempShortcutIds, setTempShortcutIds] = useState<string[]>(DEFAULT_SHORTCUT_IDS);
+
+  const [modalAlert, setModalAlert] = useState<{
+    visible: boolean;
+    title: string;
+    message: string;
+    type: ModalType;
+    icon?: string;
+  }>({
+    visible: false,
+    title: '',
+    message: '',
+    type: 'warning',
+  });
+
+  const showAlert = (title: string, message: string, type: ModalType = 'warning', icon?: string) => {
+    setModalAlert({
+      visible: true,
+      title,
+      message,
+      type,
+      icon,
+    });
+  };
 
   const { year, month } = getCurrentMonth();
   const cashbookId = activeCashbook?.id ?? 1;
@@ -161,7 +184,7 @@ export default function DashboardScreen() {
   function toggleShortcutSelection(id: string) {
     if (tempShortcutIds.includes(id)) {
       if (tempShortcutIds.length <= 1) {
-        Alert.alert('Perhatian', 'Pintasan minimal harus menyisakan 1 menu.');
+        showAlert('Perhatian', 'Pintasan minimal harus menyisakan 1 menu.', 'warning');
         return;
       }
       setTempShortcutIds(tempShortcutIds.filter((item) => item !== id));
@@ -176,7 +199,7 @@ export default function DashboardScreen() {
       setActiveShortcutIds(tempShortcutIds);
       setShowCustomizeModal(false);
     } catch {
-      Alert.alert('Error', 'Gagal menyimpan pintasan menu');
+      showAlert('Error', 'Gagal menyimpan pintasan menu', 'danger');
     }
   }
 
@@ -631,6 +654,18 @@ export default function DashboardScreen() {
           </View>
         </View>
       </Modal>
+
+      {/* Modern Alert Modal */}
+      <ModernConfirmModal
+        visible={modalAlert.visible}
+        type={modalAlert.type}
+        icon={modalAlert.icon}
+        title={modalAlert.title}
+        message={modalAlert.message}
+        confirmText="Mengerti"
+        cancelText=""
+        onConfirm={() => setModalAlert((prev) => ({ ...prev, visible: false }))}
+      />
     </View>
   );
 }

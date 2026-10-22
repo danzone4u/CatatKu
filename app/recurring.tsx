@@ -5,7 +5,6 @@ import {
   FlatList,
   Pressable,
   TextInput,
-  Alert,
   Modal,
   ScrollView,
   Switch,
@@ -33,7 +32,7 @@ import { formatRupiah, formatNumberThousand, parseRupiahInput } from '../src/uti
 import { formatDate, getToday } from '../src/utils/date';
 import { FONTS } from '../src/constants/theme';
 import EmptyState from '../src/components/EmptyState';
-import { ModernConfirmModal } from '../src/components/ModernConfirmModal';
+import { ModernConfirmModal, type ModalType } from '../src/components/ModernConfirmModal';
 import { EditActionIcon, BackArrowIcon } from '../src/components/ActionIcons';
 import DatePickerModal from '../src/components/DatePickerModal';
 
@@ -62,6 +61,29 @@ export default function RecurringScreen() {
   const [frequency, setFrequency] = useState<'daily' | 'weekly' | 'monthly'>('monthly');
   const [nextDueDate, setNextDueDate] = useState(getToday());
   const [showDatePicker, setShowDatePicker] = useState(false);
+
+  const [modalAlert, setModalAlert] = useState<{
+    visible: boolean;
+    title: string;
+    message: string;
+    type: ModalType;
+    icon?: string;
+  }>({
+    visible: false,
+    title: '',
+    message: '',
+    type: 'warning',
+  });
+
+  const showAlert = (title: string, message: string, type: ModalType = 'warning', icon?: string) => {
+    setModalAlert({
+      visible: true,
+      title,
+      message,
+      type,
+      icon,
+    });
+  };
 
   useFocusEffect(
     useCallback(() => {
@@ -128,11 +150,11 @@ export default function RecurringScreen() {
   async function handleSaveRule() {
     const numAmount = parseRupiahInput(amount);
     if (!numAmount || numAmount <= 0) {
-      Alert.alert('Perhatian', 'Masukkan nominal yang valid');
+      showAlert('Perhatian', 'Masukkan nominal yang valid', 'warning');
       return;
     }
     if (!categoryId) {
-      Alert.alert('Perhatian', 'Pilih kategori');
+      showAlert('Perhatian', 'Pilih kategori', 'warning');
       return;
     }
 
@@ -421,6 +443,17 @@ export default function RecurringScreen() {
         confirmText="Ya, Hapus"
         onCancel={() => setDeleteRuleId(null)}
         onConfirm={confirmDeleteRule}
+      />
+
+      <ModernConfirmModal
+        visible={modalAlert.visible}
+        type={modalAlert.type}
+        icon={modalAlert.icon}
+        title={modalAlert.title}
+        message={modalAlert.message}
+        confirmText="Mengerti"
+        cancelText=""
+        onConfirm={() => setModalAlert((prev) => ({ ...prev, visible: false }))}
       />
     </View>
   );

@@ -7,7 +7,6 @@ import {
   ScrollView,
   RefreshControl,
   Modal,
-  Alert,
   TextInput,
   useWindowDimensions,
 } from 'react-native';
@@ -48,6 +47,7 @@ import {
   type DueReminderItem,
 } from '../src/utils/notifications';
 import OnboardingModal from '../src/components/OnboardingModal';
+import { ModernConfirmModal, type ModalType } from '../src/components/ModernConfirmModal';
 
 interface ShortcutItem {
   id: string;
@@ -102,6 +102,29 @@ export default function CashbookListScreen() {
 
   // Onboarding state
   const [showOnboarding, setShowOnboarding] = useState(false);
+
+  const [modalAlert, setModalAlert] = useState<{
+    visible: boolean;
+    title: string;
+    message: string;
+    type: ModalType;
+    icon?: string;
+  }>({
+    visible: false,
+    title: '',
+    message: '',
+    type: 'warning',
+  });
+
+  const showAlert = (title: string, message: string, type: ModalType = 'warning', icon?: string) => {
+    setModalAlert({
+      visible: true,
+      title,
+      message,
+      type,
+      icon,
+    });
+  };
 
   const loadShortcutSettings = useCallback(async () => {
     try {
@@ -184,7 +207,7 @@ export default function CashbookListScreen() {
   const toggleShortcutSelection = (id: string) => {
     if (tempShortcutIds.includes(id)) {
       if (tempShortcutIds.length <= 1) {
-        Alert.alert('Perhatian', 'Minimal harus memilih 1 tombol pintasan fitur.');
+        showAlert('Perhatian', 'Minimal harus memilih 1 tombol pintasan fitur.', 'warning');
         return;
       }
       setTempShortcutIds(tempShortcutIds.filter((item) => item !== id));
@@ -199,7 +222,7 @@ export default function CashbookListScreen() {
       setActiveShortcutIds(tempShortcutIds);
       setShowCustomizeModal(false);
     } catch {
-      Alert.alert('Gagal', 'Tidak dapat menyimpan pengaturan pintasan.');
+      showAlert('Gagal', 'Tidak dapat menyimpan pengaturan pintasan.', 'danger');
     }
   };
 
@@ -821,6 +844,18 @@ export default function CashbookListScreen() {
           onFinish={handleFinishOnboarding}
         />
       </Modal>
+
+      {/* Modern Alert Modal */}
+      <ModernConfirmModal
+        visible={modalAlert.visible}
+        type={modalAlert.type}
+        icon={modalAlert.icon}
+        title={modalAlert.title}
+        message={modalAlert.message}
+        confirmText="Mengerti"
+        cancelText=""
+        onConfirm={() => setModalAlert((prev) => ({ ...prev, visible: false }))}
+      />
     </View>
   );
 }

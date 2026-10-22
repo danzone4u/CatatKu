@@ -3,7 +3,7 @@ import { View, Text, StyleSheet, Modal, Pressable } from 'react-native';
 import { PALETTE, FONTS } from '../constants/theme';
 import { useThemeStore } from '../stores/useThemeStore';
 
-export type ModalType = 'danger' | 'warning' | 'info';
+export type ModalType = 'danger' | 'warning' | 'info' | 'success';
 
 interface ModernConfirmModalProps {
   visible: boolean;
@@ -13,7 +13,7 @@ interface ModernConfirmModalProps {
   message: string;
   cancelText?: string;
   confirmText?: string;
-  onCancel: () => void;
+  onCancel?: () => void;
   onConfirm: () => void;
 }
 
@@ -40,9 +40,15 @@ export function ModernConfirmModal({
         };
       case 'warning':
         return {
-          icon: icon || '📦',
+          icon: icon || '⚠️',
           badgeBg: 'rgba(217, 119, 6, 0.12)',
           confirmBtnBg: '#D97706',
+        };
+      case 'success':
+        return {
+          icon: icon || '🎉',
+          badgeBg: 'rgba(45, 106, 79, 0.14)',
+          confirmBtnBg: PALETTE.primary,
         };
       case 'info':
       default:
@@ -61,7 +67,7 @@ export function ModernConfirmModal({
       visible={visible}
       transparent
       animationType="fade"
-      onRequestClose={onCancel}
+      onRequestClose={onCancel || onConfirm}
     >
       <View style={styles.overlay}>
         <View style={[styles.card, { backgroundColor: palette.card, borderColor: palette.border }]}>
