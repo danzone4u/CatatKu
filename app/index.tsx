@@ -38,8 +38,6 @@ import {
   CustomizeActionIcon,
   EyeOpenIcon,
   EyeClosedIcon,
-  SunIcon,
-  MoonIcon,
   BellIcon,
   BillActionIcon,
   GearIcon,
@@ -330,24 +328,8 @@ export default function CashbookListScreen() {
               <Text style={[styles.tagline, { color: palette.primary }]}>Catatan Rapi, Finansial Pasti.</Text>
             </View>
 
-            {/* Sisi Kanan Header: Notifikasi, Tema & Pengaturan Global */}
+            {/* Sisi Kanan Header: Notifikasi & Pengaturan Aplikasi */}
             <View style={styles.headerRightBadge}>
-              {/* Tombol Pengaturan Global */}
-              <Pressable
-                style={({ pressed }) => [
-                  styles.themeIconBtn,
-                  {
-                    backgroundColor: isDarkMode ? 'rgba(255, 255, 255, 0.08)' : palette.cardMuted,
-                    borderColor: palette.border,
-                  },
-                  pressed && { opacity: 0.7 },
-                ]}
-                onPress={() => router.push('/global-settings' as any)}
-                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-              >
-                <GearIcon color={palette.ink} size={19} />
-              </Pressable>
-
               {/* Tombol Notifikasi */}
               <Pressable
                 style={({ pressed }) => [
@@ -360,12 +342,13 @@ export default function CashbookListScreen() {
                 ]}
                 onPress={() => setShowNotificationModal(true)}
                 hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                accessibilityLabel="Pemberitahuan Tagihan & Hutang"
               >
                 <BellIcon color={dueReminders.length > 0 ? palette.debt : palette.ink} size={19} />
                 {dueReminders.length > 0 && <View style={styles.notifBadgeDot} />}
               </Pressable>
 
-              {/* Tombol Dark Mode Toggle */}
+              {/* Tombol Pengaturan Aplikasi */}
               <Pressable
                 style={({ pressed }) => [
                   styles.themeIconBtn,
@@ -375,14 +358,11 @@ export default function CashbookListScreen() {
                   },
                   pressed && { opacity: 0.7 },
                 ]}
-                onPress={() => toggleTheme(db)}
+                onPress={() => router.push('/global-settings' as any)}
                 hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                accessibilityLabel="Pengaturan Aplikasi"
               >
-                {isDarkMode ? (
-                  <SunIcon color="#FBBF24" size={19} />
-                ) : (
-                  <MoonIcon color={palette.primary} size={19} />
-                )}
+                <GearIcon color={palette.ink} size={19} />
               </Pressable>
             </View>
           </View>

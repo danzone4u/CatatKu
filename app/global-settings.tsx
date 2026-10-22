@@ -143,7 +143,7 @@ export default function GlobalSettingsScreen() {
           >
             <BackArrowIcon color={palette.ink} size={18} />
           </Pressable>
-          <Text style={[styles.headerTitle, { color: palette.ink }]}>Pengaturan Global ⚙️</Text>
+          <Text style={[styles.headerTitle, { color: palette.ink }]}>Pengaturan Aplikasi ⚙️</Text>
           <View style={{ width: 36 }} />
         </View>
       </View>
@@ -431,9 +431,9 @@ export default function GlobalSettingsScreen() {
                 Gunakan menu "Bagikan Cadangan Lengkap" di pengaturan ini, kirim file backup (.json) ke HP baru Anda, lalu buka menu "Pulihkan Data" di HP baru.
               </Text>
 
-              <Text style={[styles.faqQ, { color: palette.ink }]}>Apa beda Pengaturan Global dan Pengaturan Catatan?</Text>
+              <Text style={[styles.faqQ, { color: palette.ink }]}>Apa beda Pengaturan Aplikasi dan Pengaturan Catatan?</Text>
               <Text style={[styles.faqA, { color: palette.inkMuted }]}>
-                Pengaturan Global (halaman ini) mengatur keamanan PIN, tema, backup keseluruhan, dan info aplikasi. Sedangkan pengaturan di tab catatan khusus mengatur nama, anggaran budget, dan kategori catatan aktif yang sedang dibuka.
+                Pengaturan Aplikasi (halaman ini) mengatur keamanan PIN, tema, backup keseluruhan, dan info aplikasi. Sedangkan pengaturan di tab catatan khusus mengatur nama, anggaran budget, dan kategori catatan aktif yang sedang dibuka.
               </Text>
             </ScrollView>
 
