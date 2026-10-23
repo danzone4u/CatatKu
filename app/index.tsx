@@ -59,7 +59,7 @@ interface ShortcutItem {
 const ALL_AVAILABLE_SHORTCUTS: ShortcutItem[] = [
   { id: 'wallets', name: 'Dompet', route: '/wallets', iconType: 'wallet' },
   { id: 'transfer', name: 'Transfer', route: '/transfer', iconType: 'transfer' },
-  { id: 'recurring', name: 'Tagihan', route: '/recurring', iconType: 'recurring' },
+  { id: 'recurring', name: 'Rutin', route: '/recurring', iconType: 'recurring' },
   { id: 'debts', name: 'Hutang', route: '/debts', iconType: 'debts' },
   { id: 'budget', name: 'Budget', route: '/category-budgets', iconType: 'budget' },
   { id: 'savings', name: 'Nabung', route: '/savings-goals', iconType: 'savings' },
@@ -374,7 +374,7 @@ export default function CashbookListScreen() {
                 ]}
                 onPress={() => setShowNotificationModal(true)}
                 hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                accessibilityLabel="Pemberitahuan Tagihan & Hutang"
+                accessibilityLabel="Pemberitahuan Transaksi Rutin & Hutang"
               >
                 <BellIcon color={dueReminders.length > 0 ? palette.debt : palette.ink} size={19} />
                 {dueReminders.length > 0 && <View style={styles.notifBadgeDot} />}
@@ -702,7 +702,7 @@ export default function CashbookListScreen() {
               <View>
                 <Text style={[styles.modalTitle, { color: palette.ink }]}>Notifikasi & Jatuh Tempo</Text>
                 <Text style={[styles.modalSub, { color: palette.inkMuted }]}>
-                  Tagihan dan hutang yang mendekati atau lewat jatuh tempo
+                  Transaksi rutin dan hutang yang mendekati atau lewat jatuh tempo
                 </Text>
               </View>
               <Pressable

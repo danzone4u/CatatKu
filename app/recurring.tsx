@@ -211,13 +211,19 @@ export default function RecurringScreen() {
   const handleConfirmPayBill = async () => {
     if (!payingRule || !payAccountId) return;
     try {
-      const billTitle = payingRule.note || payingRule.category_name || 'Tagihan';
+      const isIncome = payingRule.type === 'income';
+      const billTitle = payingRule.note || payingRule.category_name || (isIncome ? 'Pemasukan Rutin' : 'Transaksi Rutin');
       await payScheduledBill(db, payingRule.id, currentMonthStr, payAccountId, getNowFull());
       setPayingRule(null);
       await loadData();
-      showAlert('Sukses', `Tagihan "${billTitle}" berhasil dibayar dan dicatat sebagai mutasi.`, 'success', '🎉');
+      showAlert(
+        'Sukses',
+        `Transaksi rutin "${billTitle}" berhasil ${isIncome ? 'diterima' : 'dibayar'} dan dicatat ke mutasi.`,
+        'success',
+        '🎉'
+      );
     } catch {
-      showAlert('Error', 'Gagal memproses pembayaran tagihan', 'danger');
+      showAlert('Error', 'Gagal memproses transaksi rutin', 'danger');
     }
   };
 
@@ -249,7 +255,7 @@ export default function RecurringScreen() {
             </Pressable>
             <View>
               <Text style={[styles.headerSub, { color: palette.primary }]}>{activeCashbook?.name ?? 'Catatan'}</Text>
-              <Text style={[styles.headerTitle, { color: palette.ink }]}>Jadwal & Tagihan</Text>
+              <Text style={[styles.headerTitle, { color: palette.ink }]}>Transaksi Rutin</Text>
             </View>
           </View>
 
@@ -257,7 +263,7 @@ export default function RecurringScreen() {
             style={[styles.addTopBtn, { backgroundColor: palette.primary }]}
             onPress={openAddModal}
           >
-            <Text style={styles.addTopBtnText}>+ Buat Jadwal</Text>
+            <Text style={styles.addTopBtnText}>+ Transaksi Rutin</Text>
           </Pressable>
         </View>
       </View>
@@ -268,7 +274,7 @@ export default function RecurringScreen() {
           {(
             [
               { id: 'all', label: `Semua (${rules.length})` },
-              { id: 'bills', label: `Tagihan (${manualBills.length})` },
+              { id: 'bills', label: `Manual (${manualBills.length})` },
               { id: 'auto', label: 'Otomatis' },
             ] as const
           ).map((tab) => {
@@ -311,17 +317,17 @@ export default function RecurringScreen() {
             <View style={[styles.billSummaryCard, { backgroundColor: palette.card, borderColor: palette.border }]}>
               <View style={styles.summaryTop}>
                 <View>
-                  <Text style={[styles.summaryLabel, { color: palette.inkMuted }]}>Kewajiban Tagihan Bulan Ini</Text>
+                  <Text style={[styles.summaryLabel, { color: palette.inkMuted }]}>Transaksi Manual Bulan Ini</Text>
                   <Text style={[styles.summaryAmount, { color: palette.ink }]}>{formatRupiah(totalBillsAmount)}</Text>
                 </View>
                 <View style={[styles.summaryBadge, { backgroundColor: paidBillsCount === manualBills.length && manualBills.length > 0 ? '#DCFCE7' : 'rgba(217, 119, 6, 0.12)' }]}>
                   <Text style={[styles.summaryBadgeText, { color: paidBillsCount === manualBills.length && manualBills.length > 0 ? '#16A34A' : '#D97706' }]}>
-                    {paidBillsCount}/{manualBills.length} Terbayar
+                    {paidBillsCount}/{manualBills.length} Selesai
                   </Text>
                 </View>
               </View>
               <Text style={[styles.summaryDesc, { color: palette.inkMuted }]}>
-                Pencatatan otomatis jalan di latar belakang. Tagihan manual perlu ditekan konfirmasi lunas.
+                Pencatatan otomatis jalan di latar belakang. Transaksi manual membutuhkan konfirmasi eksekusi saat tempo.
               </Text>
             </View>
           ) : (
@@ -349,7 +355,7 @@ export default function RecurringScreen() {
                 <View style={{ flex: 1 }}>
                   <View style={styles.badgeLine}>
                     <Text style={[styles.ruleTitle, { color: palette.ink }]}>
-                      {item.note || item.category_name || 'Jadwal Transaksi'}
+                      {item.note || item.category_name || 'Transaksi Rutin'}
                     </Text>
                     <View
                       style={[
@@ -358,7 +364,7 @@ export default function RecurringScreen() {
                       ]}
                     >
                       <Text style={[styles.modeBadgeText, { color: isManualBill ? '#D97706' : palette.primary }]}>
-                        {isManualBill ? 'Tagihan Manual' : 'Otomatis'}
+                        {isManualBill ? 'Manual' : 'Otomatis'}
                       </Text>
                     </View>
                   </View>
@@ -388,7 +394,9 @@ export default function RecurringScreen() {
                   </Text>
                   {isManualBill && (
                     <Text style={[styles.statusText, { color: isPaidThisMonth ? '#16A34A' : '#D97706' }]}>
-                      {isPaidThisMonth ? '✓ Lunas Bulan Ini' : '⚠️ Belum Dibayar'}
+                      {isPaidThisMonth
+                        ? (item.type === 'income' ? '✓ Diterima Bulan Ini' : '✓ Lunas Bulan Ini')
+                        : (item.type === 'income' ? '⚠️ Belum Diterima' : '⚠️ Belum Dibayar')}
                     </Text>
                   )}
                 </View>
@@ -403,7 +411,7 @@ export default function RecurringScreen() {
                       ]}
                       onPress={() => handlePayPress(item)}
                     >
-                      <Text style={styles.payActionBtnText}>Bayar</Text>
+                      <Text style={styles.payActionBtnText}>{item.type === 'income' ? 'Catat' : 'Bayar'}</Text>
                     </Pressable>
                   )}
 
@@ -428,9 +436,9 @@ export default function RecurringScreen() {
         }}
         ListEmptyComponent={
           <EmptyState
-            icon="📅"
-            title="Belum Ada Jadwal Transaksi"
-            subtitle="Jadwalkan tagihan bulanan atau transaksi berulang agar tercatat rapi & terkontrol"
+            icon="🔄"
+            title="Belum Ada Transaksi Rutin"
+            subtitle="Jadwalkan pengeluaran atau pemasukan berulang agar pencatatan keuangan rapi & otomatis"
             isDark={isDarkMode}
           />
         }
@@ -447,7 +455,7 @@ export default function RecurringScreen() {
           <View style={[styles.modalContent, { backgroundColor: palette.card, borderColor: palette.border }, isTablet && { maxWidth: 540 }]}>
             <View style={styles.modalHeader}>
               <Text style={[styles.modalTitle, { color: palette.ink }]}>
-                {editingRuleId ? 'Edit Jadwal & Tagihan' : 'Buat Jadwal & Tagihan Baru'}
+                {editingRuleId ? 'Edit Transaksi Rutin' : 'Tambah Transaksi Rutin'}
               </Text>
               <Pressable onPress={() => setShowModal(false)} hitSlop={8}>
                 <Text style={[styles.modalClose, { color: palette.inkMuted }]}>✕</Text>
@@ -483,7 +491,7 @@ export default function RecurringScreen() {
                 </Pressable>
               </View>
 
-              {/* Mode Eksekusi: Otomatis vs Manual (Tagihan) */}
+              {/* Mode Eksekusi: Otomatis vs Manual */}
               <Text style={[styles.inputLabel, { color: palette.inkSecondary }]}>Mode Eksekusi Pencatatan</Text>
               <View style={styles.execModeRow}>
                 <Pressable
@@ -516,10 +524,10 @@ export default function RecurringScreen() {
                   <Text style={styles.execModeIcon}>📄</Text>
                   <View style={{ flex: 1 }}>
                     <Text style={[styles.execModeTitle, { color: !isAutoExecute ? '#D97706' : palette.ink }]}>
-                      Tagihan Manual
+                      Konfirmasi Manual
                     </Text>
                     <Text style={[styles.execModeDesc, { color: palette.inkMuted }]}>
-                      Konfirmasi tombol bayar
+                      Konfirmasi saat transaksi selesai
                     </Text>
                   </View>
                 </Pressable>
@@ -537,10 +545,10 @@ export default function RecurringScreen() {
               />
 
               {/* Note */}
-              <Text style={[styles.inputLabel, { color: palette.inkSecondary }]}>Nama / Keterangan Tagihan</Text>
+              <Text style={[styles.inputLabel, { color: palette.inkSecondary }]}>Nama / Keterangan Transaksi</Text>
               <TextInput
                 style={[styles.input, { backgroundColor: palette.cardMuted, borderColor: palette.border, color: palette.ink }]}
-                placeholder="Misal: Tagihan Listrik, WiFi, Gaji Bulanan"
+                placeholder="Misal: Gaji Bulanan, Sewa Kantor, WiFi, Arisan"
                 placeholderTextColor={palette.inkMuted}
                 value={note}
                 onChangeText={setNote}
@@ -630,7 +638,7 @@ export default function RecurringScreen() {
 
               <Pressable style={[styles.saveBtn, { backgroundColor: palette.primary }]} onPress={handleSaveRule}>
                 <Text style={styles.saveBtnText}>
-                  {editingRuleId ? 'Perbarui Jadwal' : 'Simpan Jadwal'}
+                  {editingRuleId ? 'Perbarui Transaksi Rutin' : 'Simpan Transaksi Rutin'}
                 </Text>
               </Pressable>
             </ScrollView>
@@ -638,23 +646,29 @@ export default function RecurringScreen() {
         </View>
       </Modal>
 
-      {/* Modal Bayar Tagihan Manual */}
+      {/* Modal Konfirmasi Eksekusi Manual */}
       <Modal visible={payingRule !== null} animationType="fade" transparent onRequestClose={() => setPayingRule(null)}>
         <View style={styles.modalOverlay}>
           <View style={[styles.payModalCard, { backgroundColor: palette.card, borderColor: palette.border }, isTablet && { maxWidth: 440 }]}>
-            <Text style={[styles.payModalTitle, { color: palette.ink }]}>Bayar Tagihan</Text>
+            <Text style={[styles.payModalTitle, { color: palette.ink }]}>
+              {payingRule?.type === 'income' ? 'Konfirmasi Pemasukan Rutin' : 'Konfirmasi Pengeluaran Rutin'}
+            </Text>
             <Text style={[styles.payModalSub, { color: palette.inkMuted }]}>
               {payingRule?.note || payingRule?.category_name} • Periode {currentMonthStr}
             </Text>
 
             <View style={[styles.payAmountBox, { backgroundColor: palette.cardMuted }]}>
-              <Text style={[styles.payAmountLabel, { color: palette.inkMuted }]}>Total Pembayaran</Text>
-              <Text style={[styles.payAmountVal, { color: palette.expense }]}>
+              <Text style={[styles.payAmountLabel, { color: palette.inkMuted }]}>
+                {payingRule?.type === 'income' ? 'Total Pemasukan' : 'Total Pembayaran'}
+              </Text>
+              <Text style={[styles.payAmountVal, { color: payingRule?.type === 'income' ? palette.income : palette.expense }]}>
                 {formatRupiah(payingRule?.amount ?? 0)}
               </Text>
             </View>
 
-            <Text style={[styles.inputLabel, { color: palette.inkSecondary }]}>Pilih Sumber Dana (Dompet):</Text>
+            <Text style={[styles.inputLabel, { color: palette.inkSecondary }]}>
+              {payingRule?.type === 'income' ? 'Pilih Dompet Penerima:' : 'Pilih Sumber Dana (Dompet):'}
+            </Text>
             <ScrollView style={{ maxHeight: 180, marginBottom: 16 }}>
               {accounts.map((acc) => {
                 const isSelected = payAccountId === acc.id;
@@ -692,7 +706,9 @@ export default function RecurringScreen() {
                 style={[styles.payConfirmBtn, { backgroundColor: palette.primary }]}
                 onPress={handleConfirmPayBill}
               >
-                <Text style={{ color: '#FFFFFF', fontWeight: '700' }}>Konfirmasi Bayar</Text>
+                <Text style={{ color: '#FFFFFF', fontWeight: '700' }}>
+                  {payingRule?.type === 'income' ? 'Konfirmasi Catat' : 'Konfirmasi Bayar'}
+                </Text>
               </Pressable>
             </View>
           </View>

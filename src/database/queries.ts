@@ -1090,7 +1090,9 @@ export async function payScheduledBill(
     rule.type,
     rule.amount,
     rule.category_id,
-    rule.note ? `Bayar Tagihan: ${rule.note}` : 'Bayar Tagihan',
+    rule.note
+      ? (rule.type === 'income' ? `Pemasukan Rutin: ${rule.note}` : `Pengeluaran Rutin: ${rule.note}`)
+      : (rule.type === 'income' ? 'Pemasukan Rutin' : 'Pengeluaran Rutin'),
     payDate
   );
 

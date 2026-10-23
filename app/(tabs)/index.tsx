@@ -53,7 +53,7 @@ interface ShortcutItem {
 const ALL_AVAILABLE_SHORTCUTS: ShortcutItem[] = [
   { id: 'wallets', name: 'Dompet', route: '/wallets', iconType: 'wallet' },
   { id: 'transfer', name: 'Transfer', route: '/transfer', iconType: 'transfer' },
-  { id: 'recurring', name: 'Tagihan', route: '/recurring', iconType: 'recurring' },
+  { id: 'recurring', name: 'Rutin', route: '/recurring', iconType: 'recurring' },
   { id: 'debts', name: 'Hutang', route: '/debts', iconType: 'debts' },
   { id: 'budget', name: 'Budget', route: '/category-budgets', iconType: 'budget' },
   { id: 'savings', name: 'Nabung', route: '/savings-goals', iconType: 'savings' },

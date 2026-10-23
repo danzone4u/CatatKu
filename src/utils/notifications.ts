@@ -64,7 +64,7 @@ export async function checkDueReminders(db: SQLiteDatabase, cashbookId: number):
       if (daysDiff <= 3) {
         items.push({
           id: `scheduled-${r.id}`,
-          title: r.is_auto_execute === 0 ? `Tagihan: ${r.note || r.category_name}` : `Jadwal: ${r.note || r.category_name}`,
+          title: r.is_auto_execute === 0 ? `Rutin: ${r.note || r.category_name}` : `Otomatis: ${r.note || r.category_name}`,
           description: daysDiff < 0 
             ? `Sudah lewat jatuh tempo ${Math.abs(daysDiff)} hari!` 
             : daysDiff === 0 
