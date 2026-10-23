@@ -34,7 +34,7 @@ export default function SettingsScreen() {
   const db = useSQLiteContext();
   const { width } = useWindowDimensions();
   const isTablet = width >= 600;
-  const { palette } = useThemeStore();
+  const { palette, isDarkMode } = useThemeStore();
   const { activeCashbook, setActiveCashbook } = useCashbookStore();
   const cashbookId = activeCashbook?.id ?? 1;
 
@@ -303,8 +303,18 @@ export default function SettingsScreen() {
       {/* Kategori Pengeluaran */}
       <View style={styles.sectionHeaderRow}>
         <Text style={[styles.sectionTitleNoMargin, { color: palette.inkSecondary }]}>KATEGORI TRANSAKSI</Text>
-        <Pressable onPress={() => setShowAddCategory(!showAddCategory)}>
-          <Text style={[styles.addCatLink, { color: palette.primary }]}>
+        <Pressable
+          style={({ pressed }) => [
+            styles.addCatBtn,
+            {
+              backgroundColor: isDarkMode ? 'rgba(45, 106, 79, 0.25)' : palette.primarySurface,
+              borderColor: isDarkMode ? 'rgba(45, 106, 79, 0.45)' : '#CCFBF1',
+            },
+            pressed && { opacity: 0.7 },
+          ]}
+          onPress={() => setShowAddCategory(!showAddCategory)}
+        >
+          <Text style={[styles.addCatBtnText, { color: palette.primary }]}>
             {showAddCategory ? '✕ Batal' : '+ Kategori'}
           </Text>
         </Pressable>
@@ -496,6 +506,16 @@ const styles = StyleSheet.create({
     fontFamily: FONTS.sansBold,
     fontSize: 11,
     letterSpacing: 0.5,
+  },
+  addCatBtn: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+    borderWidth: 1,
+  },
+  addCatBtnText: {
+    fontFamily: FONTS.sansBold,
+    fontSize: 11,
   },
   addCatLink: {
     fontFamily: FONTS.sansBold,

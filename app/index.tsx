@@ -485,7 +485,17 @@ export default function CashbookListScreen() {
         {/* Section Pintasan Aksi Cepat */}
         <View style={styles.shortcutsSectionHeader}>
           <Text style={[styles.shortcutsSectionTitle, { color: palette.ink }]}>Aksi Cepat</Text>
-          <Pressable style={styles.customizeTrigger} onPress={openCustomizeModal}>
+          <Pressable
+            style={({ pressed }) => [
+              styles.customizeTrigger,
+              {
+                backgroundColor: isDarkMode ? 'rgba(45, 106, 79, 0.25)' : palette.primarySurface,
+                borderColor: isDarkMode ? 'rgba(45, 106, 79, 0.45)' : '#CCFBF1',
+              },
+              pressed && { opacity: 0.7 },
+            ]}
+            onPress={openCustomizeModal}
+          >
             <CustomizeActionIcon color={palette.primary} size={14} />
             <Text style={[styles.customizeTriggerText, { color: palette.primary }]}>Atur Pintasan</Text>
           </Pressable>
@@ -1060,6 +1070,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 12,
+    borderWidth: 1,
   },
   customizeTriggerText: {
     fontFamily: FONTS.sansBold,

@@ -414,13 +414,16 @@ export default function DashboardScreen() {
           <Pressable
             style={({ pressed }) => [
               styles.customizeBtn,
-              { backgroundColor: isDarkMode ? 'rgba(45, 106, 79, 0.25)' : palette.primarySurface },
+              {
+                backgroundColor: isDarkMode ? 'rgba(45, 106, 79, 0.25)' : palette.primarySurface,
+                borderColor: isDarkMode ? 'rgba(45, 106, 79, 0.45)' : '#CCFBF1',
+              },
               pressed && { opacity: 0.7 },
             ]}
             onPress={openCustomizeModal}
           >
             <CustomizeActionIcon color={palette.primary} size={14} />
-            <Text style={[styles.customizeBtnText, { color: palette.primary }]}>Kustomisasi</Text>
+            <Text style={[styles.customizeBtnText, { color: palette.primary }]}>Atur Pintasan</Text>
           </Pressable>
         </View>
 
@@ -477,8 +480,18 @@ export default function DashboardScreen() {
           <View style={styles.sectionWrap}>
             <View style={styles.sectionHeaderInside}>
               <Text style={[styles.sectionTitle, { color: palette.ink }]}>Dompet & Rekening</Text>
-              <Pressable onPress={() => router.push('/wallets')}>
-                <Text style={styles.sectionLink}>Kelola ›</Text>
+              <Pressable
+                style={({ pressed }) => [
+                  styles.sectionActionBtn,
+                  {
+                    backgroundColor: isDarkMode ? 'rgba(45, 106, 79, 0.25)' : palette.primarySurface,
+                    borderColor: isDarkMode ? 'rgba(45, 106, 79, 0.45)' : '#CCFBF1',
+                  },
+                  pressed && { opacity: 0.7 },
+                ]}
+                onPress={() => router.push('/wallets')}
+              >
+                <Text style={[styles.sectionActionBtnText, { color: palette.primary }]}>Kelola ›</Text>
               </Pressable>
             </View>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.accountScroll}>
@@ -503,8 +516,18 @@ export default function DashboardScreen() {
           <View style={styles.sectionWrap}>
             <View style={styles.sectionHeaderInside}>
               <Text style={[styles.sectionTitle, { color: palette.ink }]}>Target Menabung</Text>
-              <Pressable onPress={() => router.push('/savings-goals')}>
-                <Text style={styles.sectionLink}>Semua ›</Text>
+              <Pressable
+                style={({ pressed }) => [
+                  styles.sectionActionBtn,
+                  {
+                    backgroundColor: isDarkMode ? 'rgba(45, 106, 79, 0.25)' : palette.primarySurface,
+                    borderColor: isDarkMode ? 'rgba(45, 106, 79, 0.45)' : '#CCFBF1',
+                  },
+                  pressed && { opacity: 0.7 },
+                ]}
+                onPress={() => router.push('/savings-goals')}
+              >
+                <Text style={[styles.sectionActionBtnText, { color: palette.primary }]}>Semua ›</Text>
               </Pressable>
             </View>
             {savingsGoals.slice(0, 2).map((goal) => {
@@ -865,8 +888,10 @@ const styles = StyleSheet.create({
     gap: 4,
     backgroundColor: '#EAF6F3',
     paddingHorizontal: 10,
-    paddingVertical: 4,
+    paddingVertical: 5,
     borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#CCFBF1',
   },
   customizeBtnText: {
     fontFamily: FONTS.sansBold,
@@ -930,6 +955,16 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   sectionTitle: { fontFamily: FONTS.serifTitle, fontSize: 16, fontWeight: '700', color: PALETTE.ink },
+  sectionActionBtn: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+    borderWidth: 1,
+  },
+  sectionActionBtnText: {
+    fontFamily: FONTS.sansBold,
+    fontSize: 11,
+  },
   sectionLink: { fontFamily: FONTS.sansBold, fontSize: 12, color: PALETTE.primary },
   accountScroll: { flexDirection: 'row' },
   miniAccountCard: {
