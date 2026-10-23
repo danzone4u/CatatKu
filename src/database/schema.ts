@@ -43,6 +43,7 @@ export async function migrateDbIfNeeded(db: SQLiteDatabase) {
         icon TEXT NOT NULL DEFAULT '💵',
         color TEXT NOT NULL DEFAULT '#16A34A',
         is_default INTEGER NOT NULL DEFAULT 0,
+        sort_order INTEGER NOT NULL DEFAULT 0,
         created_at TEXT NOT NULL DEFAULT (datetime('now')),
         FOREIGN KEY (cashbook_id) REFERENCES cashbooks(id) ON DELETE CASCADE
       );
@@ -190,6 +191,7 @@ export async function migrateDbIfNeeded(db: SQLiteDatabase) {
         icon TEXT NOT NULL DEFAULT '💵',
         color TEXT NOT NULL DEFAULT '#16A34A',
         is_default INTEGER NOT NULL DEFAULT 0,
+        sort_order INTEGER NOT NULL DEFAULT 0,
         created_at TEXT NOT NULL DEFAULT (datetime('now')),
         FOREIGN KEY (cashbook_id) REFERENCES cashbooks(id) ON DELETE CASCADE
       );
@@ -289,6 +291,10 @@ export async function migrateDbIfNeeded(db: SQLiteDatabase) {
 
   try {
     await db.execAsync('ALTER TABLE recurring_rules ADD COLUMN last_paid_period TEXT;');
+  } catch {}
+
+  try {
+    await db.execAsync('ALTER TABLE accounts ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0;');
   } catch {}
 
   // Migrasi aman data dari monthly_bills lama ke recurring_rules jika ada

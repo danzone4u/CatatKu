@@ -11,9 +11,25 @@ interface Props {
   onLongPress?: () => void;
   onEdit?: () => void;
   onDelete?: () => void;
+  onSetDefault?: () => void;
+  onMoveUp?: () => void;
+  onMoveDown?: () => void;
+  canMoveUp?: boolean;
+  canMoveDown?: boolean;
 }
 
-export default function AccountCard({ account, onPress, onLongPress, onEdit, onDelete }: Props) {
+export default function AccountCard({
+  account,
+  onPress,
+  onLongPress,
+  onEdit,
+  onDelete,
+  onSetDefault,
+  onMoveUp,
+  onMoveDown,
+  canMoveUp = false,
+  canMoveDown = false,
+}: Props) {
   const palette = useThemeStore((s) => s.palette);
   const isDarkMode = useThemeStore((s) => s.isDarkMode);
 
@@ -63,10 +79,41 @@ export default function AccountCard({ account, onPress, onLongPress, onEdit, onD
               )}
             </View>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+              {/* Tombol Pindah Naik/Turun */}
+              {onMoveUp && canMoveUp && (
+                <Pressable
+                  hitSlop={8}
+                  style={({ pressed }) => [styles.actionBtn, { backgroundColor: palette.cardMuted }, pressed && { opacity: 0.6 }]}
+                  onPress={onMoveUp}
+                >
+                  <Text style={[styles.arrowIconText, { color: palette.inkSecondary }]}>▲</Text>
+                </Pressable>
+              )}
+              {onMoveDown && canMoveDown && (
+                <Pressable
+                  hitSlop={8}
+                  style={({ pressed }) => [styles.actionBtn, { backgroundColor: palette.cardMuted }, pressed && { opacity: 0.6 }]}
+                  onPress={onMoveDown}
+                >
+                  <Text style={[styles.arrowIconText, { color: palette.inkSecondary }]}>▼</Text>
+                </Pressable>
+              )}
+
+              {/* Tombol Jadikan Utama */}
+              {onSetDefault && account.is_default !== 1 && (
+                <Pressable
+                  hitSlop={8}
+                  style={({ pressed }) => [styles.actionBtn, { backgroundColor: palette.cardMuted }, pressed && { opacity: 0.6 }]}
+                  onPress={onSetDefault}
+                >
+                  <Text style={{ fontSize: 13 }}>⭐</Text>
+                </Pressable>
+              )}
+
               {onEdit && (
                 <Pressable
                   hitSlop={8}
-                  style={({ pressed }) => [styles.deleteBtn, { backgroundColor: palette.cardMuted }, pressed && { opacity: 0.6 }]}
+                  style={({ pressed }) => [styles.actionBtn, { backgroundColor: palette.cardMuted }, pressed && { opacity: 0.6 }]}
                   onPress={onEdit}
                 >
                   <EditActionIcon color={palette.primary} size={15} />
@@ -75,7 +122,7 @@ export default function AccountCard({ account, onPress, onLongPress, onEdit, onD
               {onDelete && account.is_default !== 1 && (
                 <Pressable
                   hitSlop={8}
-                  style={({ pressed }) => [styles.deleteBtn, { backgroundColor: palette.cardMuted }, pressed && { opacity: 0.6 }]}
+                  style={({ pressed }) => [styles.actionBtn, { backgroundColor: palette.cardMuted }, pressed && { opacity: 0.6 }]}
                   onPress={onDelete}
                 >
                   <Text style={styles.deleteIconText}>🗑️</Text>
@@ -184,12 +231,18 @@ const styles = StyleSheet.create({
     fontSize: 17,
     fontWeight: '800',
   },
-  deleteBtn: {
-    padding: 4,
+  actionBtn: {
+    paddingHorizontal: 6,
+    paddingVertical: 4,
     borderRadius: 8,
-    backgroundColor: '#FEE2E2',
     justifyContent: 'center',
     alignItems: 'center',
+    minWidth: 26,
+    minHeight: 26,
+  },
+  arrowIconText: {
+    fontSize: 10,
+    fontWeight: '800',
   },
   deleteIconText: {
     fontSize: 12,

@@ -31,6 +31,7 @@ export interface Account {
   icon: string;
   color: string;
   is_default: number;
+  sort_order?: number;
   created_at: string;
 }
 
@@ -351,7 +352,7 @@ export async function deleteCashbook(db: SQLiteDatabase, id: number): Promise<vo
 // ─── Accounts (Dompet / Rekening) ───
 export async function getAccounts(db: SQLiteDatabase, cashbookId: number): Promise<AccountWithCalculatedBalance[]> {
   const accounts = await db.getAllAsync<Account>(
-    'SELECT * FROM accounts WHERE cashbook_id = ? ORDER BY is_default DESC, id ASC',
+    'SELECT * FROM accounts WHERE cashbook_id = ? ORDER BY is_default DESC, sort_order ASC, id ASC',
     cashbookId
   );
 
@@ -458,6 +459,17 @@ export async function updateAccount(
 
 export async function deleteAccount(db: SQLiteDatabase, id: number): Promise<void> {
   await db.runAsync('DELETE FROM accounts WHERE id = ? AND is_default = 0', id);
+}
+
+export async function setDefaultAccount(db: SQLiteDatabase, cashbookId: number, accountId: number): Promise<void> {
+  await db.runAsync('UPDATE accounts SET is_default = 0 WHERE cashbook_id = ?', cashbookId);
+  await db.runAsync('UPDATE accounts SET is_default = 1 WHERE id = ?', accountId);
+}
+
+export async function updateAccountOrder(db: SQLiteDatabase, accountIds: number[]): Promise<void> {
+  for (let i = 0; i < accountIds.length; i++) {
+    await db.runAsync('UPDATE accounts SET sort_order = ? WHERE id = ?', i, accountIds[i]);
+  }
 }
 
 // ─── Transfers (Pindah Saldo Antar Akun) ───

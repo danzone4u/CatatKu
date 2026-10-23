@@ -8,6 +8,8 @@ import {
   addAccount,
   updateAccount,
   deleteAccount,
+  setDefaultAccount,
+  updateAccountOrder,
   type AccountWithCalculatedBalance,
 } from '../src/database/queries';
 import { useCashbookStore } from '../src/stores/useCashbookStore';
@@ -154,6 +156,33 @@ export default function WalletsScreen() {
     const { id } = deleteTarget;
     setDeleteTarget(null);
     await deleteAccount(db, id);
+    loadAccounts();
+  }
+
+  async function handleSetDefault(accId: number) {
+    await setDefaultAccount(db, cashbookId, accId);
+    loadAccounts();
+  }
+
+  async function handleMoveUp(index: number) {
+    if (index <= 0) return;
+    const nextList = [...accounts];
+    const temp = nextList[index];
+    nextList[index] = nextList[index - 1];
+    nextList[index - 1] = temp;
+    setAccounts(nextList);
+    await updateAccountOrder(db, nextList.map((a) => a.id));
+    loadAccounts();
+  }
+
+  async function handleMoveDown(index: number) {
+    if (index >= accounts.length - 1) return;
+    const nextList = [...accounts];
+    const temp = nextList[index];
+    nextList[index] = nextList[index + 1];
+    nextList[index + 1] = temp;
+    setAccounts(nextList);
+    await updateAccountOrder(db, nextList.map((a) => a.id));
     loadAccounts();
   }
 
@@ -423,7 +452,7 @@ export default function WalletsScreen() {
             isDark={isDarkMode}
           />
         ) : (
-          accounts.map((a) => (
+          accounts.map((a, idx) => (
             <AccountCard
               key={a.id}
               account={a}
@@ -431,6 +460,11 @@ export default function WalletsScreen() {
               onEdit={() => openEditModal(a)}
               onLongPress={() => handleDeleteAccount(a.id, a.name)}
               onDelete={() => handleDeleteAccount(a.id, a.name)}
+              onSetDefault={() => handleSetDefault(a.id)}
+              onMoveUp={() => handleMoveUp(idx)}
+              onMoveDown={() => handleMoveDown(idx)}
+              canMoveUp={idx > 0}
+              canMoveDown={idx < accounts.length - 1}
             />
           ))
         )}
