@@ -1,10 +1,12 @@
-import { View, Text, StyleSheet, TextInput, Pressable, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, TextInput, Pressable, ScrollView, useWindowDimensions } from 'react-native';
 import { useSQLiteContext } from 'expo-sqlite';
-import { useState, useEffect } from 'react';
-import { router, Stack, useLocalSearchParams } from 'expo-router';
+import { useState, useCallback } from 'react';
+import { router, Stack, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { createCashbook, updateCashbook, getCashbookById } from '../src/database/queries';
 import { EMOJI_LIST } from '../src/constants/categories';
-import { PALETTE, FONTS } from '../src/constants/theme';
+import { FONTS } from '../src/constants/theme';
+import { useThemeStore } from '../src/stores/useThemeStore';
+import { formatNumberThousand, parseRupiahInput } from '../src/utils/currency';
 import { ModernConfirmModal, type ModalType } from '../src/components/ModernConfirmModal';
 
 const COLOR_OPTIONS = [
@@ -14,6 +16,11 @@ const COLOR_OPTIONS = [
 
 export default function CashbookModalScreen() {
   const db = useSQLiteContext();
+  const { width } = useWindowDimensions();
+  const isTablet = width >= 600;
+  const palette = useThemeStore((s) => s.palette);
+  const isDarkMode = useThemeStore((s) => s.isDarkMode);
+
   const params = useLocalSearchParams<{ id?: string }>();
   const isEdit = !!params.id;
 
@@ -46,26 +53,29 @@ export default function CashbookModalScreen() {
     });
   };
 
-  useEffect(() => {
-    if (isEdit) {
-      loadCashbook();
-    }
-  }, []);
-
-  async function loadCashbook() {
-    const data = await getCashbookById(db, parseInt(params.id!, 10));
-    if (data) {
-      setName(data.name);
-      setSelectedEmoji(data.icon);
-      setSelectedColor(data.color);
-      if (data.type) {
-        setBookType(data.type);
+  useFocusEffect(
+    useCallback(() => {
+      let isMounted = true;
+      if (isEdit) {
+        getCashbookById(db, parseInt(params.id!, 10)).then((data) => {
+          if (data && isMounted) {
+            setName(data.name);
+            setSelectedEmoji(data.icon);
+            setSelectedColor(data.color);
+            if (data.type) {
+              setBookType(data.type);
+            }
+            if (data.budget_limit) {
+              setBudgetLimit(formatNumberThousand(data.budget_limit));
+            }
+          }
+        });
       }
-      if (data.budget_limit) {
-        setBudgetLimit(data.budget_limit.toString());
-      }
-    }
-  }
+      return () => {
+        isMounted = false;
+      };
+    }, [db, isEdit, params.id])
+  );
 
   async function handleSave() {
     if (!name.trim()) {
@@ -73,14 +83,14 @@ export default function CashbookModalScreen() {
       return;
     }
 
-    const budget = budgetLimit ? parseFloat(budgetLimit) : null;
+    const budget = parseRupiahInput(budgetLimit);
 
     if (isEdit) {
       await updateCashbook(db, parseInt(params.id!, 10), {
         name: name.trim(),
         icon: selectedEmoji,
         color: selectedColor,
-        budget_limit: budget,
+        budget_limit: budget > 0 ? budget : null,
         type: bookType,
       });
     } else {
@@ -88,7 +98,7 @@ export default function CashbookModalScreen() {
         name: name.trim(),
         icon: selectedEmoji,
         color: selectedColor,
-        budget_limit: budget,
+        budget_limit: budget > 0 ? budget : null,
         type: bookType,
       });
     }
@@ -97,76 +107,116 @@ export default function CashbookModalScreen() {
   }
 
   return (
-    <>
+    <View style={[styles.container, { backgroundColor: palette.canvas }]}>
       <Stack.Screen
         options={{
           headerShown: true,
           title: isEdit ? 'Ubah Catatan' : 'Buat Catatan Baru',
-          headerStyle: { backgroundColor: '#FFFFFF' },
-          headerTintColor: '#0F172A',
-          headerTitleStyle: { fontWeight: '700' },
+          headerStyle: { backgroundColor: palette.card },
+          headerTintColor: palette.ink,
+          headerTitleStyle: { fontWeight: '700', fontFamily: FONTS.serifTitle },
         }}
       />
-      <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+      <ScrollView
+        contentContainerStyle={[
+          styles.content,
+          isTablet && { maxWidth: 640, width: '100%', alignSelf: 'center' },
+        ]}
+        showsVerticalScrollIndicator={false}
+      >
         {/* Preview Header */}
         <View style={styles.previewContainer}>
           <View style={[styles.previewIconBox, { backgroundColor: selectedColor }]}>
             <Text style={styles.previewIcon}>{selectedEmoji}</Text>
           </View>
-          <Text style={styles.previewName}>{name.trim() || 'Nama Catatan'}</Text>
+          <Text style={[styles.previewName, { color: palette.ink }]}>{name.trim() || 'Nama Catatan'}</Text>
         </View>
 
         {/* Input Nama */}
-        <Text style={styles.label}>Nama Catatan</Text>
+        <Text style={[styles.label, { color: palette.inkSecondary }]}>Nama Catatan</Text>
         <TextInput
-          style={styles.input}
+          style={[styles.input, { backgroundColor: palette.card, borderColor: palette.border, color: palette.ink }]}
           placeholder="Misal: Catatan Harian, Kas Toko, Proyek Web"
-          placeholderTextColor="#94A3B8"
+          placeholderTextColor={palette.inkMuted}
           value={name}
           onChangeText={setName}
         />
 
         {/* Tipe Catatan */}
-        <Text style={styles.label}>Kategori Catatan</Text>
+        <Text style={[styles.label, { color: palette.inkSecondary }]}>Kategori Catatan</Text>
         <View style={styles.typeRow}>
           <Pressable
-            style={[styles.typeBtn, bookType === 'personal' && styles.typeBtnActive]}
+            style={[
+              styles.typeBtn,
+              { backgroundColor: palette.card, borderColor: palette.border },
+              bookType === 'personal' && { borderColor: palette.primary, backgroundColor: isDarkMode ? '#16313B' : '#EAF6F3' },
+            ]}
             onPress={() => setBookType('personal')}
           >
             <Text style={styles.typeBtnIcon}>👤</Text>
-            <Text style={[styles.typeBtnText, bookType === 'personal' && styles.typeBtnTextActive]}>
+            <Text
+              style={[
+                styles.typeBtnText,
+                { color: palette.inkMuted },
+                bookType === 'personal' && { color: palette.primary, fontWeight: '700' },
+              ]}
+            >
               Pribadi
             </Text>
           </Pressable>
 
           <Pressable
-            style={[styles.typeBtn, bookType === 'organization' && styles.typeBtnActive]}
+            style={[
+              styles.typeBtn,
+              { backgroundColor: palette.card, borderColor: palette.border },
+              bookType === 'organization' && { borderColor: palette.primary, backgroundColor: isDarkMode ? '#16313B' : '#EAF6F3' },
+            ]}
             onPress={() => setBookType('organization')}
           >
             <Text style={styles.typeBtnIcon}>👥</Text>
-            <Text style={[styles.typeBtnText, bookType === 'organization' && styles.typeBtnTextActive]}>
+            <Text
+              style={[
+                styles.typeBtnText,
+                { color: palette.inkMuted },
+                bookType === 'organization' && { color: palette.primary, fontWeight: '700' },
+              ]}
+            >
               Organisasi
             </Text>
           </Pressable>
 
           <Pressable
-            style={[styles.typeBtn, bookType === 'business' && styles.typeBtnActive]}
+            style={[
+              styles.typeBtn,
+              { backgroundColor: palette.card, borderColor: palette.border },
+              bookType === 'business' && { borderColor: palette.primary, backgroundColor: isDarkMode ? '#16313B' : '#EAF6F3' },
+            ]}
             onPress={() => setBookType('business')}
           >
             <Text style={styles.typeBtnIcon}>💼</Text>
-            <Text style={[styles.typeBtnText, bookType === 'business' && styles.typeBtnTextActive]}>
+            <Text
+              style={[
+                styles.typeBtnText,
+                { color: palette.inkMuted },
+                bookType === 'business' && { color: palette.primary, fontWeight: '700' },
+              ]}
+            >
               Bisnis / Usaha
             </Text>
           </Pressable>
         </View>
 
         {/* Pilihan Emoji */}
-        <Text style={styles.label}>Pilih Ikon</Text>
+        <Text style={[styles.label, { color: palette.inkSecondary }]}>Pilih Ikon</Text>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.pickerRow}>
           {EMOJI_LIST.map((emoji) => (
             <Pressable
               key={emoji}
-              style={[styles.emojiBtn, selectedEmoji === emoji && styles.emojiBtnSelected]}
+              style={[
+                styles.emojiBtn,
+                { backgroundColor: palette.card, borderColor: palette.border },
+                selectedEmoji === emoji && { borderColor: palette.primary, borderWidth: 2, backgroundColor: isDarkMode ? '#16313B' : '#EAF6F3' },
+              ]}
               onPress={() => setSelectedEmoji(emoji)}
             >
               <Text style={styles.emojiText}>{emoji}</Text>
@@ -175,7 +225,7 @@ export default function CashbookModalScreen() {
         </ScrollView>
 
         {/* Pilihan Warna */}
-        <Text style={styles.label}>Warna Tema</Text>
+        <Text style={[styles.label, { color: palette.inkSecondary }]}>Warna Tema</Text>
         <View style={styles.colorGrid}>
           {COLOR_OPTIONS.map((c) => (
             <Pressable
@@ -183,7 +233,7 @@ export default function CashbookModalScreen() {
               style={[
                 styles.colorDot,
                 { backgroundColor: c },
-                selectedColor === c && styles.colorDotSelected,
+                selectedColor === c && [styles.colorDotSelected, { borderColor: palette.ink }],
               ]}
               onPress={() => setSelectedColor(c)}
             />
@@ -191,25 +241,31 @@ export default function CashbookModalScreen() {
         </View>
 
         {/* Batas Anggaran */}
-        <Text style={styles.label}>Target Batas Anggaran (Opsional)</Text>
+        <Text style={[styles.label, { color: palette.inkSecondary }]}>Target Batas Anggaran (Opsional)</Text>
         <TextInput
-          style={styles.input}
+          style={[styles.input, { backgroundColor: palette.card, borderColor: palette.border, color: palette.ink }]}
           placeholder="0 (Tanpa batas)"
-          placeholderTextColor="#94A3B8"
+          placeholderTextColor={palette.inkMuted}
           keyboardType="numeric"
           value={budgetLimit}
-          onChangeText={setBudgetLimit}
+          onChangeText={(txt) => setBudgetLimit(formatNumberThousand(txt))}
         />
-        <Text style={styles.hint}>
+        <Text style={[styles.hint, { color: palette.inkMuted }]}>
           Akan memunculkan indikator progress bar pengeluaran di catatan ini.
         </Text>
 
         {/* Save Button */}
         <Pressable
-          style={({ pressed }) => [styles.saveBtn, { backgroundColor: selectedColor }, pressed && { opacity: 0.8 }]}
+          style={({ pressed }) => [
+            styles.saveBtn,
+            { backgroundColor: palette.primary },
+            pressed && { opacity: 0.85, transform: [{ scale: 0.98 }] },
+          ]}
           onPress={handleSave}
         >
-          <Text style={styles.saveBtnText}>{isEdit ? 'Simpan Perubahan' : 'Buat Catatan'}</Text>
+          <Text style={[styles.saveBtnText, { color: isDarkMode ? '#0B131A' : '#FFFFFF' }]}>
+            {isEdit ? 'Simpan Perubahan' : 'Buat Catatan'}
+          </Text>
         </Pressable>
       </ScrollView>
 
@@ -223,12 +279,12 @@ export default function CashbookModalScreen() {
         cancelText=""
         onConfirm={() => setModalAlert((prev) => ({ ...prev, visible: false }))}
       />
-    </>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: PALETTE.canvas },
+  container: { flex: 1 },
   content: { padding: 20, paddingBottom: 40 },
   previewContainer: {
     alignItems: 'center',
@@ -241,11 +297,10 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: 8,
-    ...PALETTE.shadowLight,
   },
   previewIcon: { fontSize: 36 },
-  previewName: { fontSize: 18, fontWeight: '700', color: PALETTE.ink },
-  label: { fontSize: 14, fontWeight: '600', color: PALETTE.inkSecondary, marginBottom: 8, marginTop: 16 },
+  previewName: { fontSize: 18, fontWeight: '700', fontFamily: FONTS.serifTitle },
+  label: { fontSize: 13, fontWeight: '700', fontFamily: FONTS.sansBold, marginBottom: 8, marginTop: 16 },
   typeRow: { flexDirection: 'row', gap: 8 },
   typeBtn: {
     flex: 1,
@@ -255,30 +310,20 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     paddingHorizontal: 8,
     borderRadius: 12,
-    backgroundColor: PALETTE.card,
     borderWidth: 1,
-    borderColor: PALETTE.border,
     gap: 4,
   },
-  typeBtnActive: {
-    backgroundColor: PALETTE.primarySurface,
-    borderColor: PALETTE.primary,
-    borderWidth: 1.5,
-  },
   typeBtnIcon: { fontSize: 14 },
-  typeBtnText: { fontSize: 12, fontWeight: '600', color: PALETTE.inkMuted },
-  typeBtnTextActive: { color: PALETTE.primary, fontWeight: '700' },
+  typeBtnText: { fontSize: 12, fontWeight: '600', fontFamily: FONTS.sansMedium },
   input: {
-    backgroundColor: PALETTE.card,
     borderRadius: 12,
     paddingHorizontal: 16,
     paddingVertical: 12,
     fontSize: 15,
-    color: PALETTE.ink,
     borderWidth: 1,
-    borderColor: PALETTE.border,
+    fontFamily: FONTS.sansRegular,
   },
-  hint: { fontSize: 12, color: PALETTE.inkMuted, marginTop: 4 },
+  hint: { fontSize: 12, fontFamily: FONTS.sansRegular, marginTop: 4 },
   pickerRow: { flexDirection: 'row', marginBottom: 8 },
   emojiBtn: {
     width: 44,
@@ -286,15 +331,8 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: PALETTE.card,
     marginRight: 8,
     borderWidth: 1,
-    borderColor: PALETTE.border,
-  },
-  emojiBtnSelected: {
-    backgroundColor: PALETTE.primarySurface,
-    borderWidth: 2,
-    borderColor: PALETTE.primary,
   },
   emojiText: { fontSize: 22 },
   colorGrid: {
@@ -310,8 +348,6 @@ const styles = StyleSheet.create({
   },
   colorDotSelected: {
     borderWidth: 3,
-    borderColor: '#FFFFFF',
-    ...PALETTE.shadowMedium,
     transform: [{ scale: 1.15 }],
   },
   saveBtn: {
@@ -319,7 +355,6 @@ const styles = StyleSheet.create({
     paddingVertical: 16,
     alignItems: 'center',
     marginTop: 24,
-    ...PALETTE.shadowMedium,
   },
-  saveBtnText: { color: '#FFFFFF', fontSize: 16, fontWeight: '700' },
+  saveBtnText: { color: '#FFFFFF', fontSize: 15, fontWeight: '700', fontFamily: FONTS.sansBold },
 });

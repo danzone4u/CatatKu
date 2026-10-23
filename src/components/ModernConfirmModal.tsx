@@ -28,34 +28,38 @@ export function ModernConfirmModal({
   onCancel,
   onConfirm,
 }: ModernConfirmModalProps) {
-  const { palette } = useThemeStore();
+  const { palette, isDarkMode } = useThemeStore();
 
   const getThemeColors = () => {
     switch (type) {
       case 'danger':
         return {
           icon: icon || '🗑️',
-          badgeBg: 'rgba(239, 68, 68, 0.12)',
-          confirmBtnBg: '#DC2626',
+          badgeBg: isDarkMode ? 'rgba(239, 68, 68, 0.2)' : 'rgba(239, 68, 68, 0.12)',
+          confirmBtnBg: palette.expense,
+          confirmBtnText: '#FFFFFF',
         };
       case 'warning':
         return {
           icon: icon || '⚠️',
-          badgeBg: 'rgba(217, 119, 6, 0.12)',
+          badgeBg: isDarkMode ? 'rgba(245, 158, 11, 0.2)' : 'rgba(217, 119, 6, 0.12)',
           confirmBtnBg: '#D97706',
+          confirmBtnText: '#FFFFFF',
         };
       case 'success':
         return {
           icon: icon || '🎉',
-          badgeBg: 'rgba(45, 106, 79, 0.14)',
-          confirmBtnBg: PALETTE.primary,
+          badgeBg: isDarkMode ? 'rgba(20, 184, 166, 0.2)' : 'rgba(45, 106, 79, 0.14)',
+          confirmBtnBg: palette.primary,
+          confirmBtnText: isDarkMode ? '#0B131A' : '#FFFFFF',
         };
       case 'info':
       default:
         return {
           icon: icon || '🛡️',
-          badgeBg: 'rgba(45, 106, 79, 0.12)',
-          confirmBtnBg: PALETTE.primary,
+          badgeBg: isDarkMode ? 'rgba(20, 184, 166, 0.2)' : 'rgba(45, 106, 79, 0.12)',
+          confirmBtnBg: palette.primary,
+          confirmBtnText: isDarkMode ? '#0B131A' : '#FFFFFF',
         };
     }
   };
@@ -101,7 +105,7 @@ export function ModernConfirmModal({
               ]}
               onPress={onConfirm}
             >
-              <Text style={styles.btnConfirmText}>{confirmText}</Text>
+              <Text style={[styles.btnConfirmText, { color: colors.confirmBtnText }]}>{confirmText}</Text>
             </Pressable>
           </View>
         </View>

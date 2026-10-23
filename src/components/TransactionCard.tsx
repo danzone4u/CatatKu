@@ -2,7 +2,8 @@ import { View, Text, StyleSheet, Pressable } from 'react-native';
 import { type TransactionWithCategory } from '../database/queries';
 import { formatRupiah } from '../utils/currency';
 import { formatDate } from '../utils/date';
-import { PALETTE, FONTS } from '../constants/theme';
+import { FONTS } from '../constants/theme';
+import { useThemeStore } from '../stores/useThemeStore';
 
 interface Props extends TransactionWithCategory {
   onPress?: () => void;
@@ -12,28 +13,52 @@ interface Props extends TransactionWithCategory {
 
 export default function TransactionCard(props: Props) {
   const isIncome = props.type === 'income';
+  const palette = useThemeStore((s) => s.palette);
+  const isDarkMode = useThemeStore((s) => s.isDarkMode);
 
   return (
     <Pressable
-      style={({ pressed }) => [styles.card, pressed && styles.pressed]}
+      style={({ pressed }) => [
+        styles.card,
+        {
+          backgroundColor: palette.card,
+          borderColor: palette.border,
+        },
+        pressed && [styles.pressed, { backgroundColor: isDarkMode ? '#172735' : '#FAFCFB' }],
+      ]}
       onPress={props.onPress}
       onLongPress={props.onLongPress}
     >
-      <View style={[styles.iconContainer, { backgroundColor: isIncome ? '#F0FDF4' : '#FEF2F2' }]}>
+      <View
+        style={[
+          styles.iconContainer,
+          {
+            backgroundColor: isIncome
+              ? isDarkMode ? '#064E3B' : '#F0FDF4'
+              : isDarkMode ? '#4C0519' : '#FEF2F2',
+          },
+        ]}
+      >
         <Text style={styles.icon}>{props.category_icon || (isIncome ? '💰' : '💸')}</Text>
       </View>
 
       <View style={styles.details}>
         <View style={styles.titleRow}>
-          <Text style={styles.categoryName} numberOfLines={1}>{props.category_name}</Text>
+          <Text style={[styles.categoryName, { color: palette.ink }]} numberOfLines={1}>
+            {props.category_name}
+          </Text>
           <View style={styles.rightActionRow}>
-            <Text style={[styles.amount, isIncome ? styles.income : styles.expense]}>
+            <Text style={[styles.amount, { color: isIncome ? palette.income : palette.expense }]}>
               {isIncome ? '+' : '-'}{formatRupiah(props.amount)}
             </Text>
             {props.onDelete && (
               <Pressable
                 hitSlop={8}
-                style={({ pressed }) => [styles.deleteBtn, pressed && { opacity: 0.6 }]}
+                style={({ pressed }) => [
+                  styles.deleteBtn,
+                  { backgroundColor: isDarkMode ? '#4C0519' : '#FEE2E2' },
+                  pressed && { opacity: 0.6 },
+                ]}
                 onPress={props.onDelete}
               >
                 <Text style={styles.deleteIconText}>🗑️</Text>
@@ -44,26 +69,28 @@ export default function TransactionCard(props: Props) {
 
         {/* Waktu Transaksi Detik */}
         <View style={styles.timeRow}>
-          <Text style={styles.dateText}>🕒 {formatDate(props.date)}</Text>
+          <Text style={[styles.dateText, { color: palette.inkSecondary }]}>
+            🕒 {formatDate(props.date)}
+          </Text>
         </View>
 
         <View style={styles.subRow}>
           <View style={styles.metaLeft}>
             {props.account_name && (
-              <View style={styles.accountBadge}>
-                <Text style={styles.accountText}>
+              <View style={[styles.accountBadge, { backgroundColor: palette.cardMuted }]}>
+                <Text style={[styles.accountText, { color: palette.inkSecondary }]}>
                   {props.account_icon ?? '💳'} {props.account_name}
                 </Text>
               </View>
             )}
             {props.receipt_image_uri && (
-              <View style={styles.receiptBadge}>
-                <Text style={styles.receiptBadgeText}>🧾 Struk</Text>
+              <View style={[styles.receiptBadge, { backgroundColor: isDarkMode ? '#451A03' : '#FEF3C7' }]}>
+                <Text style={[styles.receiptBadgeText, { color: palette.debt }]}>🧾 Struk</Text>
               </View>
             )}
           </View>
           {props.note ? (
-            <Text style={styles.note} numberOfLines={1}>
+            <Text style={[styles.note, { color: palette.inkMuted }]} numberOfLines={1}>
               {props.note}
             </Text>
           ) : null}
@@ -77,18 +104,14 @@ const styles = StyleSheet.create({
   card: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: PALETTE.card,
     paddingVertical: 12,
     paddingHorizontal: 14,
     marginHorizontal: 16,
     marginTop: 8,
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: PALETTE.border,
-    ...PALETTE.shadowLight,
   },
   pressed: {
-    backgroundColor: '#FAFCFB',
     transform: [{ scale: 0.99 }],
   },
   iconContainer: {
@@ -118,7 +141,6 @@ const styles = StyleSheet.create({
   deleteBtn: {
     padding: 3,
     borderRadius: 8,
-    backgroundColor: '#FEE2E2',
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -129,7 +151,6 @@ const styles = StyleSheet.create({
     fontFamily: FONTS.serifTitle,
     fontSize: 15,
     fontWeight: '700',
-    color: PALETTE.ink,
     flex: 1,
     marginRight: 8,
   },
@@ -138,12 +159,6 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '800',
   },
-  income: {
-    color: PALETTE.income,
-  },
-  expense: {
-    color: PALETTE.expense,
-  },
   timeRow: {
     marginTop: 2,
     marginBottom: 4,
@@ -151,7 +166,6 @@ const styles = StyleSheet.create({
   dateText: {
     fontFamily: FONTS.sansMedium,
     fontSize: 11,
-    color: PALETTE.inkSecondary,
     fontWeight: '600',
   },
   subRow: {
@@ -167,7 +181,6 @@ const styles = StyleSheet.create({
     flexShrink: 1,
   },
   receiptBadge: {
-    backgroundColor: '#FEF3C7',
     paddingHorizontal: 6,
     paddingVertical: 1.5,
     borderRadius: 6,
@@ -176,10 +189,8 @@ const styles = StyleSheet.create({
     fontFamily: FONTS.sansBold,
     fontSize: 10,
     fontWeight: '800',
-    color: '#B45309',
   },
   accountBadge: {
-    backgroundColor: PALETTE.cardMuted,
     paddingHorizontal: 6,
     paddingVertical: 1.5,
     borderRadius: 6,
@@ -187,14 +198,11 @@ const styles = StyleSheet.create({
   },
   accountText: {
     fontFamily: FONTS.sansMedium,
-    fontSize: 10,
-    color: PALETTE.inkSecondary,
-    fontWeight: '600',
+    fontSize: 11,
   },
   note: {
     fontFamily: FONTS.sansRegular,
     fontSize: 11,
-    color: PALETTE.inkMuted,
     flex: 1,
     textAlign: 'right',
   },

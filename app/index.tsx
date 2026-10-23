@@ -59,16 +59,15 @@ interface ShortcutItem {
 const ALL_AVAILABLE_SHORTCUTS: ShortcutItem[] = [
   { id: 'wallets', name: 'Dompet', route: '/wallets', iconType: 'wallet' },
   { id: 'transfer', name: 'Transfer', route: '/transfer', iconType: 'transfer' },
-  { id: 'bills', name: 'Tagihan', route: '/bills', iconType: 'bills' },
-  { id: 'debts', name: 'Hutang', route: '/(tabs)/debts', iconType: 'debts' },
+  { id: 'recurring', name: 'Tagihan', route: '/recurring', iconType: 'recurring' },
+  { id: 'debts', name: 'Hutang', route: '/debts', iconType: 'debts' },
   { id: 'budget', name: 'Budget', route: '/category-budgets', iconType: 'budget' },
   { id: 'savings', name: 'Nabung', route: '/savings-goals', iconType: 'savings' },
   { id: 'cashier', name: 'Kasir', route: '/cashier-calculator', iconType: 'cashier' },
-  { id: 'recurring', name: 'Rutin', route: '/recurring', iconType: 'recurring' },
   { id: 'export', name: 'Laporan', route: '/(tabs)/reports', iconType: 'export' },
 ];
 
-const DEFAULT_SHORTCUT_IDS = ['wallets', 'transfer', 'bills', 'debts'];
+const DEFAULT_SHORTCUT_IDS = ['wallets', 'transfer', 'recurring', 'debts'];
 const SETTINGS_KEY = 'home_screen_shortcuts_v1';
 
 type BookTypeFilter = 'all' | 'personal' | 'organization' | 'business';
@@ -132,8 +131,18 @@ export default function CashbookListScreen() {
       if (saved) {
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed) && parsed.length > 0) {
-          setActiveShortcutIds(parsed);
-          return;
+          // Migrasi otomatis: ganti 'bills' lama dengan 'recurring', hapus ID usang
+          const validIds = ALL_AVAILABLE_SHORTCUTS.map((s) => s.id);
+          const sanitized = Array.from(
+            new Set(
+              parsed.map((id: string) => (id === 'bills' ? 'recurring' : id))
+            )
+          ).filter((id) => validIds.includes(id as string));
+
+          if (sanitized.length > 0) {
+            setActiveShortcutIds(sanitized as string[]);
+            return;
+          }
         }
       }
       setActiveShortcutIds(DEFAULT_SHORTCUT_IDS);
@@ -535,7 +544,15 @@ export default function CashbookListScreen() {
         </View>
 
         {/* Filter Tabs (Semua / Pribadi / Organisasi / Bisnis) */}
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterTabsRow}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={styles.filterTabsRow}
+          contentContainerStyle={[
+            styles.filterTabsContent,
+            isTablet && styles.filterTabsContentTablet,
+          ]}
+        >
           {(['all', 'personal', 'organization', 'business'] as BookTypeFilter[]).map((ft) => {
             const active = typeFilter === ft;
             const labels: Record<BookTypeFilter, string> = {
@@ -716,9 +733,9 @@ export default function CashbookListScreen() {
                         setActiveCashbook(currentHeroBook);
                       }
                       if (r.type === 'bill') {
-                        router.push('/bills' as any);
+                        router.push('/recurring' as any);
                       } else {
-                        router.push('/(tabs)/debts');
+                        router.push('/debts' as any);
                       }
                     }}
                   >
@@ -1113,6 +1130,14 @@ const styles = StyleSheet.create({
   filterTabsRow: {
     flexDirection: 'row',
     marginBottom: 12,
+  },
+  filterTabsContent: {
+    alignItems: 'center',
+    paddingVertical: 2,
+  },
+  filterTabsContentTablet: {
+    justifyContent: 'center',
+    flexGrow: 1,
   },
   filterTab: {
     paddingHorizontal: 12,

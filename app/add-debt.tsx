@@ -8,8 +8,8 @@ import {
   useWindowDimensions,
 } from 'react-native';
 import { useSQLiteContext } from 'expo-sqlite';
-import { useState, useEffect } from 'react';
-import { router, Stack, useLocalSearchParams } from 'expo-router';
+import { useState, useCallback } from 'react';
+import { router, Stack, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import {
   addDebt,
   updateDebt,
@@ -76,45 +76,44 @@ export default function AddDebtScreen() {
     });
   };
 
-  useEffect(() => {
-    loadCashbooksAndAccounts();
-  }, [targetCashbookId]);
-
-  useEffect(() => {
-    if (editingDebtId) {
-      loadEditingDebt(editingDebtId);
-    }
-  }, [editingDebtId]);
-
-  async function loadEditingDebt(id: number) {
-    try {
-      const allDebts = await getDebts(db, targetCashbookId);
-      const found = allDebts.find((d) => d.id === id);
-      if (found) {
-        setType(found.type);
-        setPersonName(found.person_name);
-        setAmount(formatNumberThousand(found.amount));
-        setNote(found.note || '');
-        setDate(found.date);
-        setDueDate(found.due_date || '');
-        setSelectedAccountId(found.account_id ?? null);
+  useFocusEffect(
+    useCallback(() => {
+      let isMounted = true;
+      async function init() {
+        const [bList, accs] = await Promise.all([
+          getCashbooks(db, false),
+          getAccounts(db, targetCashbookId),
+        ]);
+        if (!isMounted) return;
+        setCashbooks(bList);
+        setAccounts(accs);
+        if (accs.length > 0 && !selectedAccountId) {
+          setSelectedAccountId(accs[0].id);
+        }
+        if (editingDebtId) {
+          try {
+            const allDebts = await getDebts(db, targetCashbookId);
+            const found = allDebts.find((d) => d.id === editingDebtId);
+            if (found && isMounted) {
+              setType(found.type);
+              setPersonName(found.person_name);
+              setAmount(formatNumberThousand(found.amount));
+              setNote(found.note || '');
+              setDate(found.date);
+              setDueDate(found.due_date || '');
+              setSelectedAccountId(found.account_id ?? null);
+            }
+          } catch (e) {
+            console.warn('loadEditingDebt error:', e);
+          }
+        }
       }
-    } catch (e) {
-      console.warn('loadEditingDebt error:', e);
-    }
-  }
-
-  async function loadCashbooksAndAccounts() {
-    const [bList, accs] = await Promise.all([
-      getCashbooks(db, false),
-      getAccounts(db, targetCashbookId),
-    ]);
-    setCashbooks(bList);
-    setAccounts(accs);
-    if (accs.length > 0 && !selectedAccountId) {
-      setSelectedAccountId(accs[0].id);
-    }
-  }
+      init();
+      return () => {
+        isMounted = false;
+      };
+    }, [db, targetCashbookId, editingDebtId, selectedAccountId])
+  );
 
   async function handleSave() {
     const numAmount = parseRupiahInput(amount);

@@ -18,7 +18,7 @@ export default function AccountCard({ account, onPress, onLongPress, onEdit, onD
   const isDarkMode = useThemeStore((s) => s.isDarkMode);
 
   const typeLabels = {
-    cash: 'Kas Tunai',
+    cash: 'Tunai',
     bank: 'Bank Transfer',
     ewallet: 'E-Wallet',
   };

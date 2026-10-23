@@ -297,7 +297,7 @@ export default function SavingsGoalsScreen() {
               >
                 <Text style={{ fontSize: 16 }}>🛡️</Text>
                 <View style={{ flex: 1 }}>
-                  <Text style={[styles.emergencyPresetTitle, { color: '#E11D48' }]}>Pasang Preset "Dana Darurat"</Text>
+                  <Text style={[styles.emergencyPresetTitle, { color: '#E11D48' }]}>Pasang Preset &quot;Dana Darurat&quot;</Text>
                   <Text style={[styles.emergencyPresetDesc, { color: palette.inkMuted }]}>
                     Otomatis set nama, ikon perisai, dan warna proteksi
                   </Text>

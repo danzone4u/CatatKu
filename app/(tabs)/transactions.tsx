@@ -6,11 +6,11 @@ import { StatusBar } from 'expo-status-bar';
 import TransactionCard from '../../src/components/TransactionCard';
 import FilterChip from '../../src/components/FilterChip';
 import EmptyState from '../../src/components/EmptyState';
-import { getTransactions, deleteTransaction, type TransactionWithCategory } from '../../src/database/queries';
+import { getTransactions, type TransactionWithCategory } from '../../src/database/queries';
 import { useCashbookStore } from '../../src/stores/useCashbookStore';
 import { useThemeStore } from '../../src/stores/useThemeStore';
+import { formatNumberThousand, parseRupiahInput } from '../../src/utils/currency';
 import { FONTS } from '../../src/constants/theme';
-import { ModernConfirmModal } from '../../src/components/ModernConfirmModal';
 
 type FilterType = 'all' | 'income' | 'expense';
 type TimePeriod = 'all' | 'daily' | 'weekly' | 'monthly' | 'yearly';
@@ -35,7 +35,6 @@ export default function TransactionsScreen() {
 
   // Zoom Receipt Modal
   const [viewingReceiptUri, setViewingReceiptUri] = useState<string | null>(null);
-  const [deleteTargetId, setDeleteTargetId] = useState<number | null>(null);
 
   const calculateDateRange = () => {
     if (period === 'all') return { start: undefined, end: undefined };
@@ -121,13 +120,15 @@ export default function TransactionsScreen() {
 
   const loadTransactions = useCallback(async () => {
     const { start, end } = calculateDateRange();
+    const minVal = parseRupiahInput(minAmount);
+    const maxVal = parseRupiahInput(maxAmount);
     const data = await getTransactions(db, cashbookId, {
       type: filter === 'all' ? undefined : filter,
       search: search || undefined,
       startDate: start,
       endDate: end,
-      minAmount: minAmount ? parseFloat(minAmount) : undefined,
-      maxAmount: maxAmount ? parseFloat(maxAmount) : undefined,
+      minAmount: minVal > 0 ? minVal : undefined,
+      maxAmount: maxVal > 0 ? maxVal : undefined,
     });
     setTransactions(data);
   }, [db, cashbookId, filter, search, period, currentDate, minAmount, maxAmount]);
@@ -137,18 +138,6 @@ export default function TransactionsScreen() {
       loadTransactions();
     }, [loadTransactions])
   );
-
-  function handleDelete(id: number) {
-    setDeleteTargetId(id);
-  }
-
-  async function confirmDelete() {
-    if (!deleteTargetId) return;
-    const id = deleteTargetId;
-    setDeleteTargetId(null);
-    await deleteTransaction(db, id);
-    loadTransactions();
-  }
 
   function handleResetFilters() {
     setMinAmount('');
@@ -276,8 +265,6 @@ export default function TransactionsScreen() {
                 router.push({ pathname: '/add-transaction', params: { id: item.id.toString() } });
               }
             }}
-            onLongPress={() => handleDelete(item.id)}
-            onDelete={() => handleDelete(item.id)}
           />
         )}
         ListEmptyComponent={
@@ -323,18 +310,18 @@ export default function TransactionsScreen() {
                   placeholderTextColor={palette.inkMuted}
                   keyboardType="numeric"
                   value={minAmount}
-                  onChangeText={setMinAmount}
+                  onChangeText={(txt) => setMinAmount(formatNumberThousand(txt))}
                 />
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={[styles.label, { color: palette.inkSecondary }]}>Nominal Max (Rp)</Text>
                 <TextInput
                   style={[styles.input, { backgroundColor: palette.cardMuted, borderColor: palette.border, color: palette.ink }]}
-                  placeholder="1000000"
+                  placeholder="1.000.000"
                   placeholderTextColor={palette.inkMuted}
                   keyboardType="numeric"
                   value={maxAmount}
-                  onChangeText={setMaxAmount}
+                  onChangeText={(txt) => setMaxAmount(formatNumberThousand(txt))}
                 />
               </View>
             </View>
@@ -373,19 +360,6 @@ export default function TransactionsScreen() {
           )}
         </View>
       </Modal>
-
-      {/* Modern Confirm Modal Hapus Transaksi */}
-      <ModernConfirmModal
-        visible={!!deleteTargetId}
-        type="danger"
-        icon="🗑️"
-        title="Hapus Transaksi"
-        message="Yakin ingin menghapus transaksi ini? Saldo buku catatan dan akun dompet terkait akan disesuaikan otomatis."
-        cancelText="Batal"
-        confirmText="Ya, Hapus"
-        onCancel={() => setDeleteTargetId(null)}
-        onConfirm={confirmDelete}
-      />
     </View>
   );
 }

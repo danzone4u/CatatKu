@@ -10,7 +10,7 @@ import {
 } from 'react-native';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useState, useEffect, useCallback } from 'react';
-import { router, Stack, useLocalSearchParams } from 'expo-router';
+import { router, Stack, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import * as ImagePicker from 'expo-image-picker';
 import {
@@ -25,6 +25,7 @@ import { useCashbookStore } from '../src/stores/useCashbookStore';
 import { useThemeStore } from '../src/stores/useThemeStore';
 import { getNowFull, formatDate } from '../src/utils/date';
 import { FONTS } from '../src/constants/theme';
+import { formatNumberThousand, parseRupiahInput } from '../src/utils/currency';
 import DatePickerModal from '../src/components/DatePickerModal';
 import { ModernConfirmModal, type ModalType } from '../src/components/ModernConfirmModal';
 
@@ -93,52 +94,56 @@ export default function AddTransactionScreen() {
   };
   const [showDatePicker, setShowDatePicker] = useState(false);
 
-  const loadInitial = useCallback(async () => {
-    const [cats, accs] = await Promise.all([
-      getCategories(db),
-      getAccounts(db, cashbookId),
-    ]);
-    setCategories(cats);
-    setAccounts(accs);
-    if (!isEdit && cats.length > 0 && !categoryId) {
-      setCategoryId(cats[0]!.id);
-    }
-    if (accs.length > 0 && !selectedAccountId) {
-      setSelectedAccountId(accs[0].id);
-    }
-  }, [db, cashbookId, isEdit, categoryId, selectedAccountId]);
-
-  const loadTransaction = useCallback(async () => {
-    const row = await db.getFirstAsync<{
-      id: number;
-      cashbook_id: number;
-      account_id: number | null;
-      type: string;
-      amount: number;
-      category_id: number;
-      note: string;
-      date: string;
-      receipt_image_uri?: string | null;
-    }>('SELECT * FROM transactions WHERE id = ?', parseInt(params.id!, 10));
-    if (row) {
-      setSelectedAccountId(row.account_id);
-      setType(row.type as 'income' | 'expense');
-      setAmount(row.amount.toString());
-      setCategoryId(row.category_id);
-      setNote(row.note ?? '');
-      setDate(row.date);
-      setReceiptImage(row.receipt_image_uri ?? null);
-    }
-  }, [db, params.id]);
-
-  useEffect(() => {
-    loadInitial();
-    if (isEdit) loadTransaction();
-  }, [isEdit, loadInitial, loadTransaction]);
+  useFocusEffect(
+    useCallback(() => {
+      let isMounted = true;
+      async function init() {
+        const [cats, accs] = await Promise.all([
+          getCategories(db),
+          getAccounts(db, cashbookId),
+        ]);
+        if (!isMounted) return;
+        setCategories(cats);
+        setAccounts(accs);
+        if (!isEdit && cats.length > 0 && !categoryId) {
+          setCategoryId(cats[0]!.id);
+        }
+        if (accs.length > 0 && !selectedAccountId) {
+          setSelectedAccountId(accs[0].id);
+        }
+        if (isEdit) {
+          const row = await db.getFirstAsync<{
+            id: number;
+            cashbook_id: number;
+            account_id: number | null;
+            type: string;
+            amount: number;
+            category_id: number;
+            note: string;
+            date: string;
+            receipt_image_uri?: string | null;
+          }>('SELECT * FROM transactions WHERE id = ?', parseInt(params.id!, 10));
+          if (row && isMounted) {
+            setSelectedAccountId(row.account_id);
+            setType(row.type as 'income' | 'expense');
+            setAmount(formatNumberThousand(row.amount));
+            setCategoryId(row.category_id);
+            setNote(row.note ?? '');
+            setDate(row.date);
+            setReceiptImage(row.receipt_image_uri ?? null);
+          }
+        }
+      }
+      init();
+      return () => {
+        isMounted = false;
+      };
+    }, [db, cashbookId, isEdit, params.id, categoryId, selectedAccountId])
+  );
 
   const applyTemplate = (t: QuickTemplate) => {
     setType(t.type);
-    setAmount(t.amount.toString());
+    setAmount(formatNumberThousand(t.amount));
     setNote(t.note);
     const targetCat = categories.find((c) =>
       c.name.toLowerCase().includes(t.categoryName.toLowerCase())
@@ -189,7 +194,7 @@ export default function AddTransactionScreen() {
   }
 
   async function handleSave() {
-    const numAmount = parseFloat(amount);
+    const numAmount = parseRupiahInput(amount);
     if (!numAmount || numAmount <= 0) {
       showAlert('Error', 'Masukkan jumlah yang valid', 'warning');
       return;
@@ -332,7 +337,7 @@ export default function AddTransactionScreen() {
           placeholderTextColor={palette.inkMuted}
           keyboardType="numeric"
           value={amount}
-          onChangeText={setAmount}
+          onChangeText={(text) => setAmount(formatNumberThousand(text))}
         />
 
         {/* Category */}

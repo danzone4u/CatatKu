@@ -50,6 +50,7 @@ export default function RootLayout() {
           <Stack.Screen name="category-budgets" options={{ presentation: 'card' }} />
           <Stack.Screen name="savings-goals" options={{ presentation: 'card' }} />
           <Stack.Screen name="recurring" options={{ presentation: 'card' }} />
+          <Stack.Screen name="debts" options={{ presentation: 'card' }} />
         </Stack>
 
         {/* Splash screen sebagai overlay transisi mulus */}

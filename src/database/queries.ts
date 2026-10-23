@@ -62,6 +62,8 @@ export interface RecurringRule {
   frequency: 'daily' | 'weekly' | 'monthly';
   next_due_date: string;
   last_processed: string | null;
+  is_auto_execute: number; // 1 = otomatis potong/tambah saldo, 0 = manual konfirmasi tagihan
+  last_paid_period: string | null; // format YYYY-MM
   is_active: number;
   created_at: string;
   category_name?: string;
@@ -1007,10 +1009,12 @@ export async function addRecurringRule(
     note: string;
     frequency: 'daily' | 'weekly' | 'monthly';
     next_due_date: string;
+    is_auto_execute?: number;
+    last_paid_period?: string | null;
   }
 ): Promise<number> {
   const result = await db.runAsync(
-    'INSERT INTO recurring_rules (cashbook_id, account_id, category_id, type, amount, note, frequency, next_due_date, is_active) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1)',
+    'INSERT INTO recurring_rules (cashbook_id, account_id, category_id, type, amount, note, frequency, next_due_date, is_auto_execute, last_paid_period, is_active) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)',
     data.cashbook_id,
     data.account_id ?? 1,
     data.category_id,
@@ -1018,7 +1022,9 @@ export async function addRecurringRule(
     data.amount,
     data.note,
     data.frequency,
-    data.next_due_date
+    data.next_due_date,
+    data.is_auto_execute ?? 1,
+    data.last_paid_period ?? null
   );
   return result.lastInsertRowId;
 }
@@ -1034,10 +1040,12 @@ export async function updateRecurringRule(
     note: string;
     frequency: 'daily' | 'weekly' | 'monthly';
     next_due_date: string;
+    is_auto_execute?: number;
+    last_paid_period?: string | null;
   }
 ): Promise<void> {
   await db.runAsync(
-    'UPDATE recurring_rules SET category_id = ?, account_id = ?, type = ?, amount = ?, note = ?, frequency = ?, next_due_date = ? WHERE id = ?',
+    'UPDATE recurring_rules SET category_id = ?, account_id = ?, type = ?, amount = ?, note = ?, frequency = ?, next_due_date = ?, is_auto_execute = COALESCE(?, is_auto_execute), last_paid_period = COALESCE(?, last_paid_period) WHERE id = ?',
     data.category_id,
     data.account_id,
     data.type,
@@ -1045,8 +1053,37 @@ export async function updateRecurringRule(
     data.note,
     data.frequency,
     data.next_due_date,
+    data.is_auto_execute !== undefined ? data.is_auto_execute : null,
+    data.last_paid_period !== undefined ? data.last_paid_period : null,
     id
   );
+}
+
+// Konfirmasi bayar tagihan manual: catat transaksi dan tandai periode lunas
+export async function payScheduledBill(
+  db: SQLiteDatabase,
+  ruleId: number,
+  periodStr: string,
+  targetAccountId: number,
+  payDate: string
+): Promise<void> {
+  const rule = await db.getFirstAsync<RecurringRule>('SELECT * FROM recurring_rules WHERE id = ?', ruleId);
+  if (!rule) return;
+
+  // Catat transaksi pengeluaran / pemasukan
+  await db.runAsync(
+    'INSERT INTO transactions (cashbook_id, account_id, type, amount, category_id, note, date) VALUES (?, ?, ?, ?, ?, ?, ?)',
+    rule.cashbook_id,
+    targetAccountId,
+    rule.type,
+    rule.amount,
+    rule.category_id,
+    rule.note ? `Bayar Tagihan: ${rule.note}` : 'Bayar Tagihan',
+    payDate
+  );
+
+  // Tandai last_paid_period
+  await db.runAsync('UPDATE recurring_rules SET last_paid_period = ? WHERE id = ?', periodStr, ruleId);
 }
 
 export async function toggleRecurringRule(db: SQLiteDatabase, id: number): Promise<void> {
@@ -1062,7 +1099,7 @@ export async function processDueRecurringTransactions(db: SQLiteDatabase): Promi
   try {
     const today = new Date().toISOString().slice(0, 10);
     const dueRules = await db.getAllAsync<RecurringRule>(
-      'SELECT * FROM recurring_rules WHERE is_active = 1 AND next_due_date <= ?',
+      'SELECT * FROM recurring_rules WHERE is_active = 1 AND is_auto_execute = 1 AND next_due_date <= ?',
       today
     );
 

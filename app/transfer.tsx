@@ -1,15 +1,23 @@
-import { View, Text, StyleSheet, Pressable, ScrollView, TextInput } from 'react-native';
+import { View, Text, StyleSheet, Pressable, ScrollView, TextInput, useWindowDimensions } from 'react-native';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useCallback, useState } from 'react';
 import { useFocusEffect, Stack, router } from 'expo-router';
 import { getAccounts, addTransfer, getTransfers, type AccountWithCalculatedBalance, type Transfer } from '../src/database/queries';
 import { useCashbookStore } from '../src/stores/useCashbookStore';
+import { useThemeStore } from '../src/stores/useThemeStore';
 import { getToday, formatDate } from '../src/utils/date';
-import { formatRupiah } from '../src/utils/currency';
+import { formatRupiah, formatNumberThousand, parseRupiahInput } from '../src/utils/currency';
+import { FONTS } from '../src/constants/theme';
 import { ModernConfirmModal, type ModalType } from '../src/components/ModernConfirmModal';
+import { BackArrowIcon } from '../src/components/ActionIcons';
 
 export default function TransferScreen() {
   const db = useSQLiteContext();
+  const { width } = useWindowDimensions();
+  const isTablet = width >= 600;
+  const palette = useThemeStore((s) => s.palette);
+  const isDarkMode = useThemeStore((s) => s.isDarkMode);
+
   const activeCashbook = useCashbookStore((state) => state.activeCashbook);
   const cashbookId = activeCashbook?.id ?? 1;
 
@@ -35,13 +43,13 @@ export default function TransferScreen() {
     message: '',
   });
 
-  const showModal = (title: string, message: string, type: ModalType = 'info', icon?: string) => {
+  const showAlert = (title: string, message: string, type: ModalType = 'warning', icon?: string) => {
     setModalState({
       visible: true,
-      type,
-      icon,
       title,
       message,
+      type,
+      icon,
     });
   };
 
@@ -52,35 +60,48 @@ export default function TransferScreen() {
   );
 
   async function loadData() {
-    const [accs, hist] = await Promise.all([
+    const [accList, tList] = await Promise.all([
       getAccounts(db, cashbookId),
       getTransfers(db, cashbookId),
     ]);
-    setAccounts(accs);
-    setTransfers(hist);
-    if (accs.length >= 2) {
-      setFromAccountId(accs[0].id);
-      setToAccountId(accs[1].id);
+    setAccounts(accList);
+    setTransfers(tList);
+
+    if (accList.length >= 2) {
+      if (!fromAccountId) setFromAccountId(accList[0].id);
+      if (!toAccountId) setToAccountId(accList[1].id);
+    } else if (accList.length === 1) {
+      if (!fromAccountId) setFromAccountId(accList[0].id);
     }
   }
 
   async function handleTransfer() {
     if (!fromAccountId || !toAccountId) {
-      showModal('Perhatian', 'Pilih akun asal dan akun tujuan', 'warning');
+      showAlert('Peringatan', 'Pilih akun asal dan akun tujuan.', 'warning');
       return;
     }
     if (fromAccountId === toAccountId) {
-      showModal('Perhatian', 'Akun asal dan tujuan tidak boleh sama', 'warning');
+      showAlert('Peringatan', 'Akun asal dan akun tujuan tidak boleh sama.', 'warning');
       return;
     }
 
-    const numAmount = parseFloat(amount);
+    const numAmount = parseRupiahInput(amount);
     if (!numAmount || numAmount <= 0) {
-      showModal('Perhatian', 'Masukkan nominal transfer yang valid', 'warning');
+      showAlert('Peringatan', 'Masukkan nominal transfer yang valid.', 'warning');
       return;
     }
 
-    const numFee = fee ? parseFloat(fee) : 0;
+    const numFee = parseRupiahInput(fee);
+
+    // Cek saldo akun pengirim
+    const sender = accounts.find((a) => a.id === fromAccountId);
+    if (sender && sender.calculated_balance < numAmount + numFee) {
+      showAlert(
+        'Peringatan Saldo',
+        `Saldo ${sender.name} (${formatRupiah(sender.calculated_balance)}) tidak mencukupi untuk transfer ${formatRupiah(numAmount + numFee)}. Tetap lanjutkan?`,
+        'warning'
+      );
+    }
 
     await addTransfer(db, {
       cashbook_id: cashbookId,
@@ -88,118 +109,181 @@ export default function TransferScreen() {
       to_account_id: toAccountId,
       amount: numAmount,
       fee: numFee,
+      note: note.trim(),
       date,
-      note,
     });
 
     setAmount('');
     setFee('');
     setNote('');
-    showModal('Berhasil', 'Transfer saldo berhasil dicatat', 'success', '💸');
+    showAlert('Berhasil', 'Transfer saldo berhasil dicatat!', 'success', '💸');
     loadData();
   }
 
   return (
-    <>
-      <Stack.Screen
-        options={{
-          headerShown: true,
-          title: 'Pindah Saldo / Transfer',
-          headerStyle: { backgroundColor: '#FFFFFF' },
-          headerTintColor: '#0F172A',
-          headerTitleStyle: { fontWeight: '700' },
-        }}
-      />
-      <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+    <View style={[styles.container, { backgroundColor: palette.canvas }]}>
+      <Stack.Screen options={{ headerShown: false }} />
+
+      {/* Header */}
+      <View style={[styles.header, { backgroundColor: palette.card, borderBottomColor: palette.border }]}>
+        <View style={[styles.headerInner, isTablet && { maxWidth: 840, width: '100%', alignSelf: 'center' }]}>
+          <View style={styles.headerLeft}>
+            <Pressable
+              style={({ pressed }) => [styles.backBtn, { backgroundColor: palette.cardMuted }, pressed && { opacity: 0.7 }]}
+              onPress={() => router.back()}
+            >
+              <BackArrowIcon color={palette.ink} size={18} />
+            </Pressable>
+            <View>
+              <Text style={[styles.headerSub, { color: palette.primary }]}>{activeCashbook?.name ?? 'Catatan'}</Text>
+              <Text style={[styles.headerTitle, { color: palette.ink }]}>Pindah Saldo / Transfer</Text>
+            </View>
+          </View>
+        </View>
+      </View>
+
+      <ScrollView
+        contentContainerStyle={[
+          styles.content,
+          isTablet && { maxWidth: 840, width: '100%', alignSelf: 'center' },
+        ]}
+        showsVerticalScrollIndicator={false}
+      >
         {/* Form Transfer */}
-        <View style={styles.card}>
-          <Text style={styles.sectionTitle}>Transfer Antar Akun</Text>
+        <View style={[styles.card, { backgroundColor: palette.card, borderColor: palette.border }]}>
+          <Text style={[styles.sectionTitle, { color: palette.ink }]}>Transfer Antar Akun</Text>
 
           {/* Dari Akun */}
-          <Text style={styles.label}>Dari Akun (Sumber Dana)</Text>
+          <Text style={[styles.label, { color: palette.inkSecondary }]}>Dari Akun (Sumber Dana)</Text>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.pickerRow}>
-            {accounts.map((a) => (
-              <Pressable
-                key={a.id}
-                style={[styles.accountChip, fromAccountId === a.id && styles.accountChipSelected]}
-                onPress={() => setFromAccountId(a.id)}
-              >
-                <Text style={styles.accountIcon}>{a.icon}</Text>
-                <View>
-                  <Text style={[styles.accountName, fromAccountId === a.id && styles.accountNameSelected]}>
-                    {a.name}
-                  </Text>
-                  <Text style={styles.accountBalance}>{formatRupiah(a.calculated_balance)}</Text>
-                </View>
-              </Pressable>
-            ))}
+            {accounts.map((a) => {
+              const isSelected = fromAccountId === a.id;
+              return (
+                <Pressable
+                  key={a.id}
+                  style={[
+                    styles.accountChip,
+                    { backgroundColor: palette.cardMuted, borderColor: palette.border },
+                    isSelected && { borderColor: palette.primary, backgroundColor: isDarkMode ? '#16313B' : '#EAF6F3' },
+                  ]}
+                  onPress={() => setFromAccountId(a.id)}
+                >
+                  <Text style={styles.accountIcon}>{a.icon}</Text>
+                  <View>
+                    <Text
+                      style={[
+                        styles.accountName,
+                        { color: palette.ink },
+                        isSelected && { color: palette.primary, fontWeight: '700' },
+                      ]}
+                    >
+                      {a.name}
+                    </Text>
+                    <Text style={[styles.accountBalance, { color: palette.inkMuted }]}>
+                      {formatRupiah(a.calculated_balance)}
+                    </Text>
+                  </View>
+                </Pressable>
+              );
+            })}
           </ScrollView>
 
           {/* Ke Akun */}
-          <Text style={styles.label}>Ke Akun (Tujuan Dana)</Text>
+          <Text style={[styles.label, { color: palette.inkSecondary }]}>Ke Akun (Tujuan Dana)</Text>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.pickerRow}>
-            {accounts.map((a) => (
-              <Pressable
-                key={a.id}
-                style={[styles.accountChip, toAccountId === a.id && styles.accountChipSelected]}
-                onPress={() => setToAccountId(a.id)}
-              >
-                <Text style={styles.accountIcon}>{a.icon}</Text>
-                <View>
-                  <Text style={[styles.accountName, toAccountId === a.id && styles.accountNameSelected]}>
-                    {a.name}
-                  </Text>
-                  <Text style={styles.accountBalance}>{formatRupiah(a.calculated_balance)}</Text>
-                </View>
-              </Pressable>
-            ))}
+            {accounts.map((a) => {
+              const isSelected = toAccountId === a.id;
+              return (
+                <Pressable
+                  key={a.id}
+                  style={[
+                    styles.accountChip,
+                    { backgroundColor: palette.cardMuted, borderColor: palette.border },
+                    isSelected && { borderColor: palette.primary, backgroundColor: isDarkMode ? '#16313B' : '#EAF6F3' },
+                  ]}
+                  onPress={() => setToAccountId(a.id)}
+                >
+                  <Text style={styles.accountIcon}>{a.icon}</Text>
+                  <View>
+                    <Text
+                      style={[
+                        styles.accountName,
+                        { color: palette.ink },
+                        isSelected && { color: palette.primary, fontWeight: '700' },
+                      ]}
+                    >
+                      {a.name}
+                    </Text>
+                    <Text style={[styles.accountBalance, { color: palette.inkMuted }]}>
+                      {formatRupiah(a.calculated_balance)}
+                    </Text>
+                  </View>
+                </Pressable>
+              );
+            })}
           </ScrollView>
 
           {/* Nominal */}
-          <Text style={styles.label}>Nominal Transfer (Rp)</Text>
+          <Text style={[styles.label, { color: palette.inkSecondary }]}>Nominal Transfer (Rp)</Text>
           <TextInput
-            style={styles.amountInput}
+            style={[
+              styles.amountInput,
+              { backgroundColor: palette.cardMuted, borderColor: palette.border, color: palette.ink },
+            ]}
             placeholder="0"
-            placeholderTextColor="#94A3B8"
+            placeholderTextColor={palette.inkMuted}
             keyboardType="numeric"
             value={amount}
-            onChangeText={setAmount}
+            onChangeText={(txt) => setAmount(formatNumberThousand(txt))}
           />
 
           {/* Biaya Admin */}
-          <Text style={styles.label}>Biaya Admin / Fee (Opsional)</Text>
+          <Text style={[styles.label, { color: palette.inkSecondary }]}>Biaya Admin / Fee (Opsional)</Text>
           <TextInput
-            style={styles.input}
-            placeholder="0 (Misal: 2500 atau 6500)"
-            placeholderTextColor="#94A3B8"
+            style={[
+              styles.input,
+              { backgroundColor: palette.cardMuted, borderColor: palette.border, color: palette.ink },
+            ]}
+            placeholder="0 (Misal: 2.500 atau 6.500)"
+            placeholderTextColor={palette.inkMuted}
             keyboardType="numeric"
             value={fee}
-            onChangeText={setFee}
+            onChangeText={(txt) => setFee(formatNumberThousand(txt))}
           />
 
           {/* Tanggal */}
-          <Text style={styles.label}>Tanggal</Text>
+          <Text style={[styles.label, { color: palette.inkSecondary }]}>Tanggal</Text>
           <TextInput
-            style={styles.input}
+            style={[
+              styles.input,
+              { backgroundColor: palette.cardMuted, borderColor: palette.border, color: palette.ink },
+            ]}
             placeholder="YYYY-MM-DD"
-            placeholderTextColor="#94A3B8"
+            placeholderTextColor={palette.inkMuted}
             value={date}
             onChangeText={setDate}
           />
 
           {/* Catatan */}
-          <Text style={styles.label}>Catatan (Opsional)</Text>
+          <Text style={[styles.label, { color: palette.inkSecondary }]}>Catatan (Opsional)</Text>
           <TextInput
-            style={styles.input}
+            style={[
+              styles.input,
+              { backgroundColor: palette.cardMuted, borderColor: palette.border, color: palette.ink },
+            ]}
             placeholder="Misal: Tarik tunai ATM, Top up e-wallet"
-            placeholderTextColor="#94A3B8"
+            placeholderTextColor={palette.inkMuted}
             value={note}
             onChangeText={setNote}
           />
 
           {/* Submit */}
           <Pressable
-            style={({ pressed }) => [styles.submitBtn, pressed && { opacity: 0.8 }]}
+            style={({ pressed }) => [
+              styles.submitBtn,
+              { backgroundColor: palette.primary },
+              pressed && { opacity: 0.8 },
+            ]}
             onPress={handleTransfer}
           >
             <Text style={styles.submitBtnText}>Kirim / Simpan Transfer</Text>
@@ -207,25 +291,29 @@ export default function TransferScreen() {
         </View>
 
         {/* Riwayat Transfer */}
-        <Text style={[styles.sectionTitle, { marginHorizontal: 4, marginTop: 16 }]}>
+        <Text style={[styles.sectionTitle, { marginHorizontal: 4, marginTop: 16, color: palette.ink }]}>
           Riwayat Transfer ({transfers.length})
         </Text>
 
         {transfers.length === 0 ? (
-          <Text style={styles.emptyText}>Belum ada riwayat transfer saldo</Text>
+          <Text style={[styles.emptyText, { color: palette.inkMuted }]}>Belum ada riwayat transfer saldo</Text>
         ) : (
           transfers.map((t) => (
-            <View key={t.id} style={styles.historyCard}>
+            <View
+              key={t.id}
+              style={[styles.historyCard, { backgroundColor: palette.card, borderColor: palette.border }]}
+            >
               <View style={styles.historyTop}>
-                <Text style={styles.historyRoute}>
-                  {t.from_account_icon} {t.from_account_name} ➔ {t.to_account_icon} {t.to_account_name}
+                <Text style={[styles.historyRoute, { color: palette.ink }]}>
+                  {t.from_account_name} ➔ {t.to_account_name}
                 </Text>
-                <Text style={styles.historyAmount}>{formatRupiah(t.amount)}</Text>
+                <Text style={[styles.historyAmount, { color: palette.primary }]}>{formatRupiah(t.amount)}</Text>
               </View>
               <View style={styles.historyBottom}>
-                <Text style={styles.historyDate}>{formatDate(t.date)}</Text>
-                {t.fee > 0 && <Text style={styles.historyFee}>Fee: {formatRupiah(t.fee)}</Text>}
-                {t.note ? <Text style={styles.historyNote}>{t.note}</Text> : null}
+                <Text style={[styles.historyMeta, { color: palette.inkMuted }]}>
+                  {formatDate(t.date)} {t.fee > 0 ? `• Fee: ${formatRupiah(t.fee)}` : ''}
+                </Text>
+                {t.note ? <Text style={[styles.historyNote, { color: palette.inkMuted }]}>{t.note}</Text> : null}
               </View>
             </View>
           ))
@@ -242,22 +330,54 @@ export default function TransferScreen() {
         cancelText=""
         onConfirm={() => setModalState((prev) => ({ ...prev, visible: false }))}
       />
-    </>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#F8FAFC' },
-  content: { padding: 20, paddingBottom: 40 },
+  container: { flex: 1 },
+  header: {
+    paddingTop: 50,
+    paddingHorizontal: 20,
+    paddingBottom: 16,
+    borderBottomWidth: 1,
+  },
+  headerInner: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  headerLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  backBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  headerSub: {
+    fontFamily: FONTS.sansBold,
+    fontSize: 11,
+    textTransform: 'uppercase',
+  },
+  headerTitle: {
+    fontFamily: FONTS.serifTitle,
+    fontSize: 17,
+    fontWeight: '800',
+  },
+  content: { padding: 16, paddingBottom: 40 },
   card: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 16,
+    borderRadius: 18,
     padding: 16,
     borderWidth: 1,
-    borderColor: '#E2E8F0',
+    marginBottom: 16,
   },
-  sectionTitle: { fontSize: 16, fontWeight: '700', color: '#0F172A', marginBottom: 10 },
-  label: { fontSize: 13, fontWeight: '600', color: '#64748B', marginTop: 10, marginBottom: 6 },
+  sectionTitle: { fontSize: 16, fontWeight: '700', fontFamily: FONTS.sansBold, marginBottom: 12 },
+  label: { fontSize: 13, fontWeight: '600', fontFamily: FONTS.sansMedium, marginTop: 10, marginBottom: 6 },
   pickerRow: { flexDirection: 'row', marginBottom: 4 },
   accountChip: {
     flexDirection: 'row',
@@ -265,73 +385,57 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: 12,
-    backgroundColor: '#F8FAFC',
     marginRight: 8,
     borderWidth: 1,
-    borderColor: '#E2E8F0',
     minWidth: 120,
   },
-  accountChipSelected: {
-    backgroundColor: '#DBEAFE',
-    borderColor: '#2563EB',
-    borderWidth: 2,
-  },
   accountIcon: { fontSize: 20, marginRight: 8 },
-  accountName: { fontSize: 13, fontWeight: '700', color: '#0F172A' },
-  accountNameSelected: { color: '#2563EB' },
-  accountBalance: { fontSize: 11, color: '#64748B', marginTop: 2 },
+  accountName: { fontSize: 13, fontWeight: '700', fontFamily: FONTS.sansBold },
+  accountBalance: { fontSize: 11, fontFamily: FONTS.sansRegular, marginTop: 2 },
   amountInput: {
-    backgroundColor: '#F8FAFC',
     borderRadius: 12,
     paddingHorizontal: 16,
     paddingVertical: 12,
-    fontSize: 22,
+    fontSize: 20,
     fontWeight: '700',
-    color: '#0F172A',
+    fontFamily: FONTS.sansBold,
     borderWidth: 1,
-    borderColor: '#E2E8F0',
   },
   input: {
-    backgroundColor: '#F8FAFC',
     borderRadius: 10,
     paddingHorizontal: 14,
     paddingVertical: 10,
-    fontSize: 15,
-    color: '#0F172A',
+    fontSize: 14,
+    fontFamily: FONTS.sansRegular,
     borderWidth: 1,
-    borderColor: '#E2E8F0',
   },
   submitBtn: {
-    backgroundColor: '#2563EB',
     borderRadius: 12,
     paddingVertical: 14,
     alignItems: 'center',
     marginTop: 20,
   },
-  submitBtnText: { color: '#FFFFFF', fontSize: 15, fontWeight: '700' },
-  emptyText: { textAlign: 'center', color: '#94A3B8', marginTop: 16 },
+  submitBtnText: { color: '#FFFFFF', fontSize: 15, fontWeight: '700', fontFamily: FONTS.sansBold },
+  emptyText: { textAlign: 'center', marginTop: 16, fontFamily: FONTS.sansRegular },
   historyCard: {
-    backgroundColor: '#FFFFFF',
     borderRadius: 14,
     padding: 14,
     marginTop: 10,
     borderWidth: 1,
-    borderColor: '#E2E8F0',
   },
   historyTop: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
   },
-  historyRoute: { fontSize: 14, fontWeight: '700', color: '#0F172A' },
-  historyAmount: { fontSize: 15, fontWeight: '800', color: '#2563EB' },
+  historyRoute: { fontSize: 14, fontWeight: '700', fontFamily: FONTS.sansBold },
+  historyAmount: { fontSize: 15, fontWeight: '800', fontFamily: FONTS.sansBold },
   historyBottom: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginTop: 6,
+    marginTop: 4,
   },
-  historyDate: { fontSize: 12, color: '#94A3B8' },
-  historyFee: { fontSize: 12, color: '#DC2626' },
-  historyNote: { fontSize: 12, color: '#64748B', fontStyle: 'italic' },
+  historyMeta: { fontSize: 11, fontFamily: FONTS.sansRegular },
+  historyNote: { fontSize: 11, fontStyle: 'italic', fontFamily: FONTS.sansRegular },
 });

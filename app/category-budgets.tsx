@@ -1,7 +1,7 @@
-import { View, Text, StyleSheet, Pressable, ScrollView, TextInput } from 'react-native';
+import { View, Text, StyleSheet, Pressable, ScrollView, TextInput, useWindowDimensions } from 'react-native';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useCallback, useState } from 'react';
-import { useFocusEffect, Stack } from 'expo-router';
+import { useFocusEffect, Stack, router } from 'expo-router';
 import {
   getCategoryBudgets,
   setCategoryBudget,
@@ -11,12 +11,20 @@ import {
   type Category,
 } from '../src/database/queries';
 import { useCashbookStore } from '../src/stores/useCashbookStore';
+import { useThemeStore } from '../src/stores/useThemeStore';
 import { getCurrentMonth, getMonthName } from '../src/utils/date';
-import { formatRupiah } from '../src/utils/currency';
+import { formatRupiah, formatNumberThousand, parseRupiahInput } from '../src/utils/currency';
+import { FONTS } from '../src/constants/theme';
 import { ModernConfirmModal, type ModalType } from '../src/components/ModernConfirmModal';
+import { BackArrowIcon } from '../src/components/ActionIcons';
 
 export default function CategoryBudgetsScreen() {
   const db = useSQLiteContext();
+  const { width } = useWindowDimensions();
+  const isTablet = width >= 600;
+  const palette = useThemeStore((s) => s.palette);
+  const isDarkMode = useThemeStore((s) => s.isDarkMode);
+
   const activeCashbook = useCashbookStore((state) => state.activeCashbook);
   const cashbookId = activeCashbook?.id ?? 1;
   const { year, month } = getCurrentMonth();
@@ -57,13 +65,7 @@ export default function CategoryBudgetsScreen() {
     });
   };
 
-  useFocusEffect(
-    useCallback(() => {
-      loadData();
-    }, [cashbookId])
-  );
-
-  async function loadData() {
+  const loadData = useCallback(async () => {
     const [bList, cats] = await Promise.all([
       getCategoryBudgets(db, cashbookId, year, month),
       getCategories(db),
@@ -73,7 +75,13 @@ export default function CategoryBudgetsScreen() {
     if (cats.length > 0 && !selectedCatId) {
       setSelectedCatId(cats[0].id);
     }
-  }
+  }, [db, cashbookId, year, month, selectedCatId]);
+
+  useFocusEffect(
+    useCallback(() => {
+      loadData();
+    }, [loadData])
+  );
 
   async function handleSaveBudget() {
     if (!selectedCatId) {
@@ -81,9 +89,9 @@ export default function CategoryBudgetsScreen() {
       return;
     }
 
-    const numLimit = parseFloat(limitAmount);
+    const numLimit = parseRupiahInput(limitAmount);
     if (!numLimit || numLimit <= 0) {
-      showAlert('Perhatian', 'Masukkan nominal batas anggaran', 'warning');
+      showAlert('Perhatian', 'Masukkan nominal batas anggaran yang valid', 'warning');
       return;
     }
 
@@ -121,67 +129,121 @@ export default function CategoryBudgetsScreen() {
   const totalSpent = budgets.reduce((sum, b) => sum + (b.spent_amount ?? 0), 0);
 
   return (
-    <>
-      <Stack.Screen
-        options={{
-          headerShown: true,
-          title: `Anggaran Kategori (${getMonthName(month)})`,
-          headerStyle: { backgroundColor: '#FFFFFF' },
-          headerTintColor: '#0F172A',
-          headerTitleStyle: { fontWeight: '700' },
-        }}
-      />
-      <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+    <View style={[styles.container, { backgroundColor: palette.canvas }]}>
+      <Stack.Screen options={{ headerShown: false }} />
+
+      {/* Header */}
+      <View style={[styles.header, { backgroundColor: palette.card, borderBottomColor: palette.border }]}>
+        <View style={[styles.headerInner, isTablet && { maxWidth: 840, width: '100%', alignSelf: 'center' }]}>
+          <View style={styles.headerLeft}>
+            <Pressable
+              style={({ pressed }) => [styles.backBtn, { backgroundColor: palette.cardMuted }, pressed && { opacity: 0.7 }]}
+              onPress={() => router.back()}
+            >
+              <BackArrowIcon color={palette.ink} size={18} />
+            </Pressable>
+            <View>
+              <Text style={[styles.headerSub, { color: palette.primary }]}>{activeCashbook?.name ?? 'Catatan'}</Text>
+              <Text style={[styles.headerTitle, { color: palette.ink }]}>
+                Anggaran Kategori ({getMonthName(month)})
+              </Text>
+            </View>
+          </View>
+        </View>
+      </View>
+
+      <ScrollView
+        contentContainerStyle={[
+          styles.content,
+          isTablet && { maxWidth: 840, width: '100%', alignSelf: 'center' },
+        ]}
+        showsVerticalScrollIndicator={false}
+      >
         {/* Ringkasan Anggaran */}
-        <View style={styles.summaryCard}>
-          <Text style={styles.summaryTitle}>Total Pengeluaran dari Anggaran</Text>
-          <Text style={styles.summaryTotal}>
-            {formatRupiah(totalSpent)} <Text style={styles.summaryLimit}>/ {formatRupiah(totalBudgeted)}</Text>
+        <View style={[styles.summaryCard, { backgroundColor: palette.card, borderColor: palette.border }]}>
+          <Text style={[styles.summaryTitle, { color: palette.inkMuted }]}>Total Pengeluaran dari Anggaran</Text>
+          <Text style={[styles.summaryTotal, { color: palette.ink }]}>
+            {formatRupiah(totalSpent)}{' '}
+            <Text style={[styles.summaryLimit, { color: palette.inkMuted }]}>/ {formatRupiah(totalBudgeted)}</Text>
           </Text>
-          <Text style={styles.summarySub}>Periode: {getMonthName(month)} {year}</Text>
+          <Text style={[styles.summarySub, { color: palette.inkSecondary }]}>
+            Periode: {getMonthName(month)} {year}
+          </Text>
         </View>
 
         {/* Section Header */}
         <View style={styles.actionHeader}>
-          <Text style={styles.sectionTitle}>Batas Anggaran Kategori</Text>
-          <Pressable onPress={() => setShowAddForm(!showAddForm)}>
-            <Text style={styles.addBtnText}>{showAddForm ? 'Batal' : '+ Pasang Anggaran'}</Text>
+          <Text style={[styles.sectionTitle, { color: palette.ink }]}>Batas Anggaran Kategori</Text>
+          <Pressable
+            style={({ pressed }) => [
+              styles.addToggleBtn,
+              { backgroundColor: showAddForm ? palette.cardMuted : palette.primary },
+              pressed && { opacity: 0.8 },
+            ]}
+            onPress={() => setShowAddForm(!showAddForm)}
+          >
+            <Text style={[styles.addToggleBtnText, { color: showAddForm ? palette.ink : '#FFFFFF' }]}>
+              {showAddForm ? 'Batal' : '+ Pasang Anggaran'}
+            </Text>
           </Pressable>
         </View>
 
         {/* Add Budget Form */}
         {showAddForm && (
-          <View style={styles.formCard}>
-            <Text style={styles.formTitle}>Atur Anggaran Kategori</Text>
+          <View style={[styles.formCard, { backgroundColor: palette.card, borderColor: palette.border }]}>
+            <Text style={[styles.formTitle, { color: palette.ink }]}>Atur Anggaran Kategori</Text>
 
-            <Text style={styles.label}>Pilih Kategori</Text>
+            <Text style={[styles.label, { color: palette.inkSecondary }]}>Pilih Kategori</Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.pickerRow}>
-              {categories.map((c) => (
-                <Pressable
-                  key={c.id}
-                  style={[styles.catChip, selectedCatId === c.id && styles.catChipSelected]}
-                  onPress={() => setSelectedCatId(c.id)}
-                >
-                  <Text style={styles.catChipIcon}>{c.icon}</Text>
-                  <Text style={[styles.catChipText, selectedCatId === c.id && styles.catChipTextSelected]}>
-                    {c.name}
-                  </Text>
-                </Pressable>
-              ))}
+              {categories.map((c) => {
+                const isSelected = selectedCatId === c.id;
+                return (
+                  <Pressable
+                    key={c.id}
+                    style={[
+                      styles.catChip,
+                      { backgroundColor: palette.cardMuted, borderColor: palette.border },
+                      isSelected && {
+                        borderColor: palette.primary,
+                        backgroundColor: isDarkMode ? '#16313B' : '#EAF6F3',
+                      },
+                    ]}
+                    onPress={() => setSelectedCatId(c.id)}
+                  >
+                    <Text style={styles.catChipIcon}>{c.icon}</Text>
+                    <Text
+                      style={[
+                        styles.catChipText,
+                        { color: palette.inkMuted },
+                        isSelected && { color: palette.primary, fontWeight: '700' },
+                      ]}
+                    >
+                      {c.name}
+                    </Text>
+                  </Pressable>
+                );
+              })}
             </ScrollView>
 
-            <Text style={styles.label}>Batas Maksimal Bulanan (Rp)</Text>
+            <Text style={[styles.label, { color: palette.inkSecondary }]}>Batas Maksimal Bulanan (Rp)</Text>
             <TextInput
-              style={styles.amountInput}
-              placeholder="Misal: 1500000"
-              placeholderTextColor="#94A3B8"
+              style={[
+                styles.amountInput,
+                { backgroundColor: palette.cardMuted, borderColor: palette.border, color: palette.ink },
+              ]}
+              placeholder="0"
+              placeholderTextColor={palette.inkMuted}
               keyboardType="numeric"
               value={limitAmount}
-              onChangeText={setLimitAmount}
+              onChangeText={(txt) => setLimitAmount(formatNumberThousand(txt))}
             />
 
             <Pressable
-              style={({ pressed }) => [styles.saveBtn, pressed && { opacity: 0.8 }]}
+              style={({ pressed }) => [
+                styles.saveBtn,
+                { backgroundColor: palette.primary },
+                pressed && { opacity: 0.8 },
+              ]}
               onPress={handleSaveBudget}
             >
               <Text style={styles.saveBtnText}>Simpan Anggaran</Text>
@@ -191,38 +253,43 @@ export default function CategoryBudgetsScreen() {
 
         {/* List Budget Items */}
         {budgets.length === 0 ? (
-          <Text style={styles.emptyText}>Belum ada anggaran per kategori yang diatur bulan ini</Text>
+          <View style={[styles.emptyBox, { backgroundColor: palette.card, borderColor: palette.border }]}>
+            <Text style={[styles.emptyIcon]}>📊</Text>
+            <Text style={[styles.emptyText, { color: palette.inkMuted }]}>
+              Belum ada anggaran per kategori yang diatur bulan ini
+            </Text>
+          </View>
         ) : (
           budgets.map((b) => {
             const spent = b.spent_amount ?? 0;
             const ratio = b.monthly_limit > 0 ? Math.min(spent / b.monthly_limit, 1) : 0;
             const percent = Math.round(ratio * 100);
 
-            let progressColor = '#16A34A';
-            if (percent >= 90) progressColor = '#DC2626';
+            let progressColor = '#10B981';
+            if (percent >= 90) progressColor = palette.expense;
             else if (percent >= 70) progressColor = '#F59E0B';
 
             return (
               <Pressable
                 key={b.id}
-                style={styles.budgetItem}
+                style={[styles.budgetItem, { backgroundColor: palette.card, borderColor: palette.border }]}
                 onLongPress={() => handleDeleteBudget(b.id, b.category_name ?? 'Kategori')}
               >
                 <View style={styles.itemHeader}>
                   <View style={styles.itemLeft}>
                     <Text style={styles.catIcon}>{b.category_icon}</Text>
-                    <Text style={styles.catName}>{b.category_name}</Text>
+                    <Text style={[styles.catName, { color: palette.ink }]}>{b.category_name}</Text>
                   </View>
                   <Text style={[styles.percentBadge, { color: progressColor }]}>{percent}%</Text>
                 </View>
 
-                <View style={styles.progressBar}>
+                <View style={[styles.progressBar, { backgroundColor: palette.borderSubtle }]}>
                   <View style={[styles.progressFill, { width: `${ratio * 100}%`, backgroundColor: progressColor }]} />
                 </View>
 
                 <View style={styles.itemFooter}>
-                  <Text style={styles.spentText}>{formatRupiah(spent)} terpakai</Text>
-                  <Text style={styles.limitText}>Maks: {formatRupiah(b.monthly_limit)}</Text>
+                  <Text style={[styles.spentText, { color: palette.ink }]}>{formatRupiah(spent)} terpakai</Text>
+                  <Text style={[styles.limitText, { color: palette.inkMuted }]}>Maks: {formatRupiah(b.monthly_limit)}</Text>
                 </View>
               </Pressable>
             );
@@ -241,95 +308,128 @@ export default function CategoryBudgetsScreen() {
         onCancel={() => setConfirmModal((prev) => ({ ...prev, visible: false }))}
         onConfirm={confirmModal.onConfirm}
       />
-    </>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#F8FAFC' },
-  content: { padding: 20, paddingBottom: 40 },
+  container: { flex: 1 },
+  header: {
+    paddingTop: 50,
+    paddingHorizontal: 20,
+    paddingBottom: 16,
+    borderBottomWidth: 1,
+  },
+  headerInner: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  headerLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  backBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  headerSub: {
+    fontFamily: FONTS.sansBold,
+    fontSize: 11,
+    textTransform: 'uppercase',
+  },
+  headerTitle: {
+    fontFamily: FONTS.serifTitle,
+    fontSize: 17,
+    fontWeight: '800',
+  },
+  content: { padding: 16, paddingBottom: 40 },
   summaryCard: {
-    backgroundColor: '#FFFFFF',
     borderRadius: 20,
     padding: 20,
     marginBottom: 20,
     borderWidth: 1,
-    borderColor: '#E2E8F0',
   },
-  summaryTitle: { fontSize: 13, color: '#64748B', fontWeight: '500' },
-  summaryTotal: { fontSize: 24, fontWeight: '800', color: '#0F172A', marginVertical: 6 },
-  summaryLimit: { fontSize: 18, color: '#94A3B8', fontWeight: '600' },
-  summarySub: { fontSize: 12, color: '#94A3B8' },
+  summaryTitle: { fontSize: 13, fontFamily: FONTS.sansMedium },
+  summaryTotal: { fontSize: 24, fontWeight: '800', fontFamily: FONTS.serifTitle, marginVertical: 6 },
+  summaryLimit: { fontSize: 16, fontWeight: '600' },
+  summarySub: { fontSize: 12, fontFamily: FONTS.sansRegular },
   actionHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 12,
   },
-  sectionTitle: { fontSize: 16, fontWeight: '700', color: '#0F172A' },
-  addBtnText: { fontSize: 14, fontWeight: '700', color: '#2563EB' },
+  sectionTitle: { fontSize: 16, fontWeight: '700', fontFamily: FONTS.sansBold },
+  addToggleBtn: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 10,
+  },
+  addToggleBtnText: { fontSize: 12, fontWeight: '700', fontFamily: FONTS.sansBold },
   formCard: {
-    backgroundColor: '#FFFFFF',
     borderRadius: 16,
     padding: 16,
     marginBottom: 16,
     borderWidth: 1,
-    borderColor: '#E2E8F0',
   },
-  formTitle: { fontSize: 15, fontWeight: '700', color: '#0F172A', marginBottom: 10 },
-  label: { fontSize: 13, fontWeight: '600', color: '#64748B', marginTop: 8, marginBottom: 6 },
-  pickerRow: { flexDirection: 'row', marginBottom: 4 },
+  formTitle: { fontSize: 15, fontWeight: '700', fontFamily: FONTS.sansBold, marginBottom: 10 },
+  label: { fontSize: 13, fontWeight: '600', fontFamily: FONTS.sansMedium, marginTop: 8, marginBottom: 6 },
+  pickerRow: { flexDirection: 'row', marginBottom: 8 },
   catChip: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: 10,
-    backgroundColor: '#F8FAFC',
     marginRight: 8,
     borderWidth: 1,
-    borderColor: '#E2E8F0',
   },
-  catChipSelected: { backgroundColor: '#DBEAFE', borderColor: '#2563EB', borderWidth: 1.5 },
   catChipIcon: { fontSize: 16, marginRight: 6 },
-  catChipText: { fontSize: 13, color: '#64748B' },
-  catChipTextSelected: { color: '#2563EB', fontWeight: '700' },
+  catChipText: { fontSize: 13, fontFamily: FONTS.sansRegular },
   amountInput: {
-    backgroundColor: '#F8FAFC',
-    borderRadius: 10,
+    borderRadius: 12,
     paddingHorizontal: 14,
-    paddingVertical: 10,
-    fontSize: 18,
+    paddingVertical: 12,
+    fontSize: 16,
     fontWeight: '700',
-    color: '#0F172A',
+    fontFamily: FONTS.sansBold,
     borderWidth: 1,
-    borderColor: '#E2E8F0',
   },
   saveBtn: {
-    backgroundColor: '#2563EB',
     borderRadius: 12,
-    paddingVertical: 12,
+    paddingVertical: 13,
     alignItems: 'center',
     marginTop: 14,
   },
-  saveBtnText: { color: '#FFFFFF', fontSize: 14, fontWeight: '700' },
-  emptyText: { textAlign: 'center', color: '#94A3B8', marginTop: 16 },
+  saveBtnText: { color: '#FFFFFF', fontSize: 14, fontWeight: '700', fontFamily: FONTS.sansBold },
+  emptyBox: {
+    borderRadius: 16,
+    padding: 24,
+    borderWidth: 1,
+    alignItems: 'center',
+    marginTop: 12,
+  },
+  emptyIcon: { fontSize: 32, marginBottom: 8 },
+  emptyText: { textAlign: 'center', fontSize: 13, fontFamily: FONTS.sansRegular },
   budgetItem: {
-    backgroundColor: '#FFFFFF',
     borderRadius: 16,
     padding: 16,
     marginBottom: 12,
     borderWidth: 1,
-    borderColor: '#E2E8F0',
   },
   itemHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
   itemLeft: { flexDirection: 'row', alignItems: 'center' },
   catIcon: { fontSize: 20, marginRight: 8 },
-  catName: { fontSize: 15, fontWeight: '700', color: '#0F172A' },
-  percentBadge: { fontSize: 14, fontWeight: '800' },
-  progressBar: { height: 8, backgroundColor: '#E2E8F0', borderRadius: 4, overflow: 'hidden', marginVertical: 6 },
+  catName: { fontSize: 15, fontWeight: '700', fontFamily: FONTS.sansBold },
+  percentBadge: { fontSize: 14, fontWeight: '800', fontFamily: FONTS.sansBold },
+  progressBar: { height: 8, borderRadius: 4, overflow: 'hidden', marginVertical: 6 },
   progressFill: { height: '100%', borderRadius: 4 },
   itemFooter: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 4 },
-  spentText: { fontSize: 12, fontWeight: '600', color: '#0F172A' },
-  limitText: { fontSize: 12, color: '#64748B' },
+  spentText: { fontSize: 12, fontWeight: '600', fontFamily: FONTS.sansMedium },
+  limitText: { fontSize: 12, fontFamily: FONTS.sansRegular },
 });

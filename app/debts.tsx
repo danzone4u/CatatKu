@@ -2,15 +2,15 @@ import { View, Text, StyleSheet, FlatList, Pressable, useWindowDimensions } from
 import { useSQLiteContext } from 'expo-sqlite';
 import { useCallback, useState } from 'react';
 import { useFocusEffect, router, Stack } from 'expo-router';
-import DebtCard from '../../src/components/DebtCard';
-import FilterChip from '../../src/components/FilterChip';
-import EmptyState from '../../src/components/EmptyState';
-import { getDebts, toggleDebtPaid, deleteDebt, type DebtWithPayments } from '../../src/database/queries';
-import { useCashbookStore } from '../../src/stores/useCashbookStore';
-import { useThemeStore } from '../../src/stores/useThemeStore';
-import { FONTS } from '../../src/constants/theme';
-import { ModernConfirmModal } from '../../src/components/ModernConfirmModal';
-import { BackArrowIcon } from '../../src/components/ActionIcons';
+import DebtCard from '../src/components/DebtCard';
+import FilterChip from '../src/components/FilterChip';
+import EmptyState from '../src/components/EmptyState';
+import { getDebts, toggleDebtPaid, deleteDebt, type DebtWithPayments } from '../src/database/queries';
+import { useCashbookStore } from '../src/stores/useCashbookStore';
+import { useThemeStore } from '../src/stores/useThemeStore';
+import { FONTS } from '../src/constants/theme';
+import { ModernConfirmModal } from '../src/components/ModernConfirmModal';
+import { BackArrowIcon } from '../src/components/ActionIcons';
 
 type FilterType = 'all' | 'debt' | 'receivable';
 
@@ -144,7 +144,9 @@ export default function DebtsScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1 },
+  container: {
+    flex: 1,
+  },
   header: {
     paddingTop: 50,
     paddingHorizontal: 20,
@@ -189,28 +191,28 @@ const styles = StyleSheet.create({
     color: '#FAF8F5',
   },
   filterRow: {
-    paddingHorizontal: 20,
     paddingVertical: 10,
+    paddingHorizontal: 16,
     borderBottomWidth: 1,
   },
   filterInner: {
     flexDirection: 'row',
     gap: 8,
   },
-  cardContainer: {
-    width: '100%',
-  },
   listContent: {
-    paddingBottom: 40,
-    paddingTop: 8,
+    padding: 16,
+    gap: 12,
+  },
+  cardContainer: {
+    marginBottom: 4,
   },
   footerWrap: {
     alignItems: 'center',
-    paddingVertical: 24,
-    marginTop: 'auto',
+    paddingVertical: 20,
   },
   footerText: {
-    fontFamily: FONTS.sansRegular,
+    fontFamily: FONTS.sansMedium,
     fontSize: 12,
+    opacity: 0.8,
   },
 });

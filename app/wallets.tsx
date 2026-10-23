@@ -53,11 +53,11 @@ export default function WalletsScreen() {
 
   // Form Account State
   const [name, setName] = useState('');
-  const [type, setType] = useState<'cash' | 'bank' | 'ewallet'>('bank');
+  const [type, setType] = useState<'cash' | 'bank' | 'ewallet'>('cash');
   const [initialBalance, setInitialBalance] = useState('');
   const [minBalance, setMinBalance] = useState('');
-  const [selectedIcon, setSelectedIcon] = useState('🏦');
-  const [selectedColor, setSelectedColor] = useState('#2563EB');
+  const [selectedIcon, setSelectedIcon] = useState('💵');
+  const [selectedColor, setSelectedColor] = useState(palette.primary);
 
   useFocusEffect(
     useCallback(() => {
@@ -75,11 +75,11 @@ export default function WalletsScreen() {
   const openAddModal = () => {
     setEditingAccountId(null);
     setName('');
-    setType('bank');
+    setType('cash');
     setInitialBalance('');
     setMinBalance('');
-    setSelectedIcon('🏦');
-    setSelectedColor('#2563EB');
+    setSelectedIcon('💵');
+    setSelectedColor(palette.primary);
     setShowFormModal(true);
   };
 
@@ -89,8 +89,8 @@ export default function WalletsScreen() {
     setType(acc.type);
     setInitialBalance(formatNumberThousand(acc.balance));
     setMinBalance(acc.min_balance ? formatNumberThousand(acc.min_balance) : '');
-    setSelectedIcon(acc.icon || '🏦');
-    setSelectedColor(acc.color || '#2563EB');
+    setSelectedIcon(acc.icon || '💵');
+    setSelectedColor(acc.color || palette.primary);
     setShowFormModal(true);
   };
 
@@ -217,8 +217,8 @@ export default function WalletsScreen() {
             style={[
               styles.formCard,
               {
-                backgroundColor: isDarkMode ? '#172733' : palette.card,
-                borderColor: isDarkMode ? '#284154' : palette.border,
+                backgroundColor: palette.card,
+                borderColor: palette.border,
               },
             ]}
           >
@@ -242,7 +242,7 @@ export default function WalletsScreen() {
                       style={({ pressed }) => [
                         styles.presetChip,
                         {
-                          backgroundColor: isDarkMode ? '#1E3444' : palette.cardMuted,
+                          backgroundColor: palette.cardMuted,
                           borderColor: p.isEmergency ? '#E11D48' : palette.border,
                         },
                         pressed && { opacity: 0.75 },
@@ -263,8 +263,8 @@ export default function WalletsScreen() {
               style={[
                 styles.input,
                 {
-                  backgroundColor: isDarkMode ? '#101E27' : palette.cardMuted,
-                  borderColor: isDarkMode ? '#2A4356' : palette.border,
+                  backgroundColor: palette.cardMuted,
+                  borderColor: palette.border,
                   color: palette.ink,
                 },
               ]}
@@ -282,8 +282,8 @@ export default function WalletsScreen() {
                   style={[
                     styles.typeBtn,
                     {
-                      backgroundColor: isDarkMode ? '#101E27' : palette.cardMuted,
-                      borderColor: isDarkMode ? '#2A4356' : palette.border,
+                      backgroundColor: palette.cardMuted,
+                      borderColor: palette.border,
                     },
                     type === t && { backgroundColor: palette.primary, borderColor: palette.primary },
                   ]}
@@ -301,7 +301,7 @@ export default function WalletsScreen() {
                       type === t && { color: '#FFFFFF', fontWeight: '800' },
                     ]}
                   >
-                    {t === 'cash' ? 'Kas' : t === 'bank' ? 'Bank' : 'E-Wallet'}
+                    {t === 'cash' ? 'Tunai' : t === 'bank' ? 'Bank' : 'E-Wallet'}
                   </Text>
                 </Pressable>
               ))}
@@ -314,8 +314,8 @@ export default function WalletsScreen() {
                   style={[
                     styles.input,
                     {
-                      backgroundColor: isDarkMode ? '#101E27' : palette.cardMuted,
-                      borderColor: isDarkMode ? '#2A4356' : palette.border,
+                      backgroundColor: palette.cardMuted,
+                      borderColor: palette.border,
                       color: palette.ink,
                     },
                   ]}
@@ -332,8 +332,8 @@ export default function WalletsScreen() {
                   style={[
                     styles.input,
                     {
-                      backgroundColor: isDarkMode ? '#101E27' : palette.cardMuted,
-                      borderColor: isDarkMode ? '#2A4356' : palette.border,
+                      backgroundColor: palette.cardMuted,
+                      borderColor: palette.border,
                       color: palette.ink,
                     },
                   ]}
@@ -354,8 +354,8 @@ export default function WalletsScreen() {
                   style={[
                     styles.emojiBtn,
                     {
-                      backgroundColor: isDarkMode ? '#101E27' : palette.cardMuted,
-                      borderColor: isDarkMode ? '#2A4356' : palette.border,
+                      backgroundColor: palette.cardMuted,
+                      borderColor: palette.border,
                     },
                     selectedIcon === e && {
                       borderColor: palette.primary,
@@ -385,8 +385,8 @@ export default function WalletsScreen() {
                 style={[
                   styles.cancelFormBtn,
                   {
-                    backgroundColor: isDarkMode ? '#1E3444' : palette.cardMuted,
-                    borderColor: isDarkMode ? '#2E4C63' : palette.border,
+                    backgroundColor: palette.cardMuted,
+                    borderColor: palette.border,
                   },
                 ]}
                 onPress={() => setShowFormModal(false)}
@@ -419,7 +419,7 @@ export default function WalletsScreen() {
           <EmptyState
             icon="🏦"
             title="Belum Ada Akun Dompet"
-            subtitle="Tambahkan dompet kas, rekening bank, atau e-wallet"
+            subtitle="Tambahkan dompet tunai, rekening bank, atau e-wallet"
             isDark={isDarkMode}
           />
         ) : (

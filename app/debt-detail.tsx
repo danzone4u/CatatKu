@@ -1,4 +1,4 @@
-import { View, Text, StyleSheet, Pressable, ScrollView, TextInput, FlatList } from 'react-native';
+import { View, Text, StyleSheet, Pressable, ScrollView, TextInput, useWindowDimensions } from 'react-native';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useCallback, useState } from 'react';
 import { useFocusEffect, Stack, useLocalSearchParams, router } from 'expo-router';
@@ -11,12 +11,20 @@ import {
   type DebtPayment,
   type AccountWithCalculatedBalance,
 } from '../src/database/queries';
-import { formatRupiah } from '../src/utils/currency';
+import { formatRupiah, formatNumberThousand, parseRupiahInput } from '../src/utils/currency';
 import { formatDate, getToday } from '../src/utils/date';
+import { useThemeStore } from '../src/stores/useThemeStore';
+import { FONTS } from '../src/constants/theme';
 import { ModernConfirmModal, type ModalType } from '../src/components/ModernConfirmModal';
+import { BackArrowIcon } from '../src/components/ActionIcons';
 
 export default function DebtDetailScreen() {
   const db = useSQLiteContext();
+  const { width } = useWindowDimensions();
+  const isTablet = width >= 600;
+  const palette = useThemeStore((s) => s.palette);
+  const isDarkMode = useThemeStore((s) => s.isDarkMode);
+
   const params = useLocalSearchParams<{ id: string }>();
   const debtId = parseInt(params.id, 10);
 
@@ -61,35 +69,28 @@ export default function DebtDetailScreen() {
   );
 
   async function loadData() {
-    const d = await getDebtById(db, debtId);
-    if (!d) return;
-    setDebt(d);
-
-    const [pays, accs] = await Promise.all([
+    const [d, pList, accList] = await Promise.all([
+      getDebtById(db, debtId),
       getDebtPayments(db, debtId),
-      getAccounts(db, d.cashbook_id),
+      getAccounts(db, 1),
     ]);
-    setPayments(pays);
-    setAccounts(accs);
-    if (accs.length > 0 && !selectedAccountId) {
-      setSelectedAccountId(accs[0].id);
+    setDebt(d);
+    setPayments(pList);
+    setAccounts(accList);
+    if (accList.length > 0 && !selectedAccountId) {
+      setSelectedAccountId(accList[0].id);
     }
   }
 
   async function handleAddPayment() {
-    if (!selectedAccountId) {
-      showAlert('Perhatian', 'Pilih dompet / akun sumber pembayaran', 'warning');
-      return;
-    }
-
-    const numAmount = parseFloat(amount);
+    const numAmount = parseRupiahInput(amount);
     if (!numAmount || numAmount <= 0) {
-      showAlert('Perhatian', 'Masukkan nominal cicilan yang valid', 'warning');
+      showAlert('Perhatian', 'Masukkan nominal pembayaran cicilan yang valid', 'warning');
       return;
     }
 
-    if (debt && numAmount > debt.remaining_amount) {
-      showAlert('Perhatian', `Nominal cicilan melebihi sisa tagihan (${formatRupiah(debt.remaining_amount)})`, 'warning');
+    if (!selectedAccountId) {
+      showAlert('Perhatian', 'Pilih akun/dompet transaksi', 'warning');
       return;
     }
 
@@ -98,161 +99,220 @@ export default function DebtDetailScreen() {
       account_id: selectedAccountId,
       amount: numAmount,
       date,
-      note,
+      note: note.trim(),
     });
 
     setAmount('');
     setNote('');
     setShowPayForm(false);
+    showAlert('Sukses', 'Pembayaran cicilan berhasil dicatat!', 'success', '🤝');
     loadData();
   }
 
-  if (!debt) return null;
+  if (!debt) {
+    return (
+      <View style={[styles.container, { backgroundColor: palette.canvas, justifyContent: 'center', alignItems: 'center' }]}>
+        <Text style={{ color: palette.inkMuted }}>Memuat data hutang...</Text>
+      </View>
+    );
+  }
 
   const isDebt = debt.type === 'debt';
-  const isPaid = debt.is_paid === 1 || debt.remaining_amount <= 0;
-  const progressRatio = debt.amount > 0 ? Math.min(debt.total_paid / debt.amount, 1) : 0;
+  const remaining = Math.max(0, debt.remaining_amount ?? (debt.amount - (debt.total_paid ?? 0)));
+  const isPaid = debt.is_paid === 1 || remaining === 0;
+  const progressRatio = debt.amount > 0 ? Math.min((debt.total_paid ?? 0) / debt.amount, 1) : 0;
   const progressPercent = Math.round(progressRatio * 100);
 
   return (
-    <>
-      <Stack.Screen
-        options={{
-          headerShown: true,
-          title: 'Rincian & Cicilan',
-          headerStyle: { backgroundColor: '#FFFFFF' },
-          headerTintColor: '#0F172A',
-          headerTitleStyle: { fontWeight: '700' },
-        }}
-      />
-      <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-        {/* Header Overview Card */}
-        <View style={styles.overviewCard}>
+    <View style={[styles.container, { backgroundColor: palette.canvas }]}>
+      <Stack.Screen options={{ headerShown: false }} />
+
+      {/* Header */}
+      <View style={[styles.header, { backgroundColor: palette.card, borderBottomColor: palette.border }]}>
+        <View style={[styles.headerInner, isTablet && { maxWidth: 840, width: '100%', alignSelf: 'center' }]}>
+          <View style={styles.headerLeft}>
+            <Pressable
+              style={({ pressed }) => [styles.backBtn, { backgroundColor: palette.cardMuted }, pressed && { opacity: 0.7 }]}
+              onPress={() => router.back()}
+            >
+              <BackArrowIcon color={palette.ink} size={18} />
+            </Pressable>
+            <View>
+              <Text style={[styles.headerSub, { color: palette.primary }]}>{isDebt ? 'Hutang Saya' : 'Piutang Saya'}</Text>
+              <Text style={[styles.headerTitle, { color: palette.ink }]}>{debt.person_name}</Text>
+            </View>
+          </View>
+        </View>
+      </View>
+
+      <ScrollView
+        contentContainerStyle={[
+          styles.content,
+          isTablet && { maxWidth: 840, width: '100%', alignSelf: 'center' },
+        ]}
+        showsVerticalScrollIndicator={false}
+      >
+        {/* Ringkasan Status */}
+        <View style={[styles.overviewCard, { backgroundColor: palette.card, borderColor: palette.border }]}>
           <View style={styles.badgeRow}>
-            <View style={[styles.badge, isDebt ? styles.badgeDebt : styles.badgeReceivable]}>
-              <Text style={[styles.badgeText, isDebt ? styles.textDebt : styles.textReceivable]}>
-                {isDebt ? '💸 Saya Berhutang' : '💎 Piutang Saya'}
+            <View
+              style={[
+                styles.badge,
+                { backgroundColor: isDebt ? (isDarkMode ? '#451A03' : '#FED7AA') : (isDarkMode ? '#3B0764' : '#EDE9FE') },
+              ]}
+            >
+              <Text
+                style={[
+                  styles.badgeText,
+                  { color: isDebt ? palette.debt : palette.receivable },
+                ]}
+              >
+                {isDebt ? 'Hutang (Kewajiban)' : 'Piutang (Hak Tagih)'}
               </Text>
             </View>
-            {isPaid && (
-              <View style={styles.paidBadge}>
-                <Text style={styles.paidText}>LUNAS</Text>
+            {isPaid ? (
+              <View style={[styles.paidBadge, { backgroundColor: isDarkMode ? '#064E3B' : '#DCFCE7' }]}>
+                <Text style={[styles.paidText, { color: palette.income }]}>LUNAS ✓</Text>
               </View>
-            )}
+            ) : null}
           </View>
 
-          <Text style={styles.personName}>{debt.person_name}</Text>
-          <Text style={styles.dateText}>Tanggal Pinjam: {formatDate(debt.date)}</Text>
-          {debt.due_date && <Text style={styles.dueText}>Jatuh Tempo: {formatDate(debt.due_date)}</Text>}
+          <Text style={[styles.personName, { color: palette.ink }]}>{debt.person_name}</Text>
+          <Text style={[styles.dateText, { color: palette.inkMuted }]}>Dicatat pada: {formatDate(debt.created_at)}</Text>
+          {debt.due_date && (
+            <Text style={[styles.dueText, { color: palette.debt }]}>Jatuh tempo: {formatDate(debt.due_date)}</Text>
+          )}
 
-          <View style={styles.statGrid}>
+          {/* Grid Statistik */}
+          <View style={[styles.statGrid, { borderTopColor: palette.borderSubtle }]}>
             <View style={styles.statBox}>
-              <Text style={styles.statLabel}>Total Pinjaman</Text>
-              <Text style={styles.statValue}>{formatRupiah(debt.amount)}</Text>
+              <Text style={[styles.statLabel, { color: palette.inkMuted }]}>Total Pokok</Text>
+              <Text style={[styles.statValue, { color: palette.ink }]}>{formatRupiah(debt.amount)}</Text>
             </View>
             <View style={styles.statBox}>
-              <Text style={styles.statLabel}>Sudah Dibayar</Text>
-              <Text style={[styles.statValue, { color: '#16A34A' }]}>{formatRupiah(debt.total_paid)}</Text>
+              <Text style={[styles.statLabel, { color: palette.inkMuted }]}>Sudah Terbayar</Text>
+              <Text style={[styles.statValue, { color: palette.income }]}>{formatRupiah(debt.total_paid ?? 0)}</Text>
             </View>
             <View style={styles.statBox}>
-              <Text style={styles.statLabel}>Sisa Tagihan</Text>
-              <Text style={[styles.statValue, { color: isPaid ? '#16A34A' : '#DC2626' }]}>
-                {formatRupiah(debt.remaining_amount)}
-              </Text>
+              <Text style={[styles.statLabel, { color: palette.inkMuted }]}>Sisa Tagihan</Text>
+              <Text style={[styles.statValue, { color: palette.expense }]}>{formatRupiah(remaining)}</Text>
             </View>
           </View>
 
-          <View style={styles.progressBar}>
-            <View style={[styles.progressFill, { width: `${progressPercent}%`, backgroundColor: isDebt ? '#EA580C' : '#7C3AED' }]} />
+          {/* Progress Bar */}
+          <View style={[styles.progressBar, { backgroundColor: palette.borderSubtle }]}>
+            <View style={[styles.progressFill, { width: `${progressRatio * 100}%`, backgroundColor: palette.primary }]} />
           </View>
-          <Text style={styles.progressText}>{progressPercent}% terbayar</Text>
+          <Text style={[styles.progressText, { color: palette.inkSecondary }]}>{progressPercent}% Terbayar</Text>
         </View>
 
         {/* Action Button: Bayar Cicilan */}
         {!isPaid && (
           <Pressable
-            style={({ pressed }) => [styles.payBtn, pressed && { opacity: 0.8 }]}
+            style={({ pressed }) => [
+              styles.payBtn,
+              { backgroundColor: showPayForm ? palette.cardMuted : palette.primary },
+              pressed && { opacity: 0.8 },
+            ]}
             onPress={() => setShowPayForm(!showPayForm)}
           >
-            <Text style={styles.payBtnText}>{showPayForm ? 'Tutup Form' : '+ Catat Pembayaran / Cicilan'}</Text>
+            <Text style={[styles.payBtnText, { color: showPayForm ? palette.ink : '#FFFFFF' }]}>
+              {showPayForm ? 'Tutup Form' : '+ Catat Pembayaran / Cicilan'}
+            </Text>
           </Pressable>
         )}
 
         {/* Form Bayar Cicilan */}
         {showPayForm && (
-          <View style={styles.formCard}>
-            <Text style={styles.formTitle}>Form Pembayaran Cicilan</Text>
+          <View style={[styles.formCard, { backgroundColor: palette.card, borderColor: palette.border }]}>
+            <Text style={[styles.formTitle, { color: palette.ink }]}>Form Pembayaran Cicilan</Text>
 
-            <Text style={styles.label}>Nominal Pembayaran (Rp)</Text>
+            <Text style={[styles.label, { color: palette.inkSecondary }]}>Nominal Pembayaran (Rp)</Text>
             <TextInput
-              style={styles.amountInput}
+              style={[styles.amountInput, { backgroundColor: palette.cardMuted, borderColor: palette.border, color: palette.ink }]}
               placeholder="0"
-              placeholderTextColor="#94A3B8"
+              placeholderTextColor={palette.inkMuted}
               keyboardType="numeric"
               value={amount}
-              onChangeText={setAmount}
+              onChangeText={(txt) => setAmount(formatNumberThousand(txt))}
             />
 
-            <Text style={styles.label}>Pilih Dompet / Akun</Text>
+            <Text style={[styles.label, { color: palette.inkSecondary }]}>Pilih Dompet / Akun</Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.accountRow}>
-              {accounts.map((a) => (
-                <Pressable
-                  key={a.id}
-                  style={[styles.accountChip, selectedAccountId === a.id && styles.accountChipSelected]}
-                  onPress={() => setSelectedAccountId(a.id)}
-                >
-                  <Text style={styles.accountIcon}>{a.icon}</Text>
-                  <Text style={[styles.accountName, selectedAccountId === a.id && styles.accountNameSelected]}>
-                    {a.name}
-                  </Text>
-                </Pressable>
-              ))}
+              {accounts.map((a) => {
+                const isSelected = selectedAccountId === a.id;
+                return (
+                  <Pressable
+                    key={a.id}
+                    style={[
+                      styles.accountChip,
+                      { backgroundColor: palette.cardMuted, borderColor: palette.border },
+                      isSelected && { borderColor: palette.primary, backgroundColor: isDarkMode ? '#16313B' : '#EAF6F3' },
+                    ]}
+                    onPress={() => setSelectedAccountId(a.id)}
+                  >
+                    <Text style={styles.accountIcon}>{a.icon}</Text>
+                    <Text
+                      style={[
+                        styles.accountName,
+                        { color: palette.ink },
+                        isSelected && { color: palette.primary, fontWeight: '700' },
+                      ]}
+                    >
+                      {a.name}
+                    </Text>
+                  </Pressable>
+                );
+              })}
             </ScrollView>
 
-            <Text style={styles.label}>Tanggal Pembayaran</Text>
+            <Text style={[styles.label, { color: palette.inkSecondary }]}>Tanggal Pembayaran</Text>
             <TextInput
-              style={styles.input}
+              style={[styles.input, { backgroundColor: palette.cardMuted, borderColor: palette.border, color: palette.ink }]}
               placeholder="YYYY-MM-DD"
-              placeholderTextColor="#94A3B8"
+              placeholderTextColor={palette.inkMuted}
               value={date}
               onChangeText={setDate}
             />
 
-            <Text style={styles.label}>Catatan (Opsional)</Text>
+            <Text style={[styles.label, { color: palette.inkSecondary }]}>Catatan (Opsional)</Text>
             <TextInput
-              style={styles.input}
+              style={[styles.input, { backgroundColor: palette.cardMuted, borderColor: palette.border, color: palette.ink }]}
               placeholder="Misal: Cicilan ke-1 via transfer"
-              placeholderTextColor="#94A3B8"
+              placeholderTextColor={palette.inkMuted}
               value={note}
               onChangeText={setNote}
             />
 
             <Pressable
-              style={({ pressed }) => [styles.saveBtn, pressed && { opacity: 0.8 }]}
+              style={({ pressed }) => [styles.saveBtn, { backgroundColor: palette.primary }, pressed && { opacity: 0.8 }]}
               onPress={handleAddPayment}
             >
-              <Text style={styles.saveBtnText}>Simpan Cicilan</Text>
+              <Text style={styles.saveBtnText}>Simpan Pembayaran Cicilan</Text>
             </Pressable>
           </View>
         )}
 
         {/* Riwayat Cicilan */}
-        <Text style={styles.historyTitle}>Riwayat Cicilan ({payments.length})</Text>
+        <Text style={[styles.historyTitle, { color: palette.ink }]}>Riwayat Cicilan ({payments.length})</Text>
 
         {payments.length === 0 ? (
-          <Text style={styles.emptyText}>Belum ada riwayat cicilan yang dicatat</Text>
+          <Text style={[styles.emptyText, { color: palette.inkMuted }]}>Belum ada riwayat cicilan yang dicatat</Text>
         ) : (
           payments.map((p) => (
-            <View key={p.id} style={styles.paymentCard}>
+            <View
+              key={p.id}
+              style={[styles.paymentCard, { backgroundColor: palette.card, borderColor: palette.border }]}
+            >
               <View style={styles.paymentTop}>
-                <Text style={styles.paymentAccount}>
+                <Text style={[styles.paymentAccount, { color: palette.ink }]}>
                   💳 {p.account_name ?? 'Dompet'}
                 </Text>
-                <Text style={styles.paymentAmount}>{formatRupiah(p.amount)}</Text>
+                <Text style={[styles.paymentAmount, { color: palette.primary }]}>{formatRupiah(p.amount)}</Text>
               </View>
               <View style={styles.paymentBottom}>
-                <Text style={styles.paymentDate}>{formatDate(p.date)}</Text>
-                {p.note ? <Text style={styles.paymentNote}>{p.note}</Text> : null}
+                <Text style={[styles.paymentDate, { color: palette.inkMuted }]}>{formatDate(p.date)}</Text>
+                {p.note ? <Text style={[styles.paymentNote, { color: palette.inkSecondary }]}>{p.note}</Text> : null}
               </View>
             </View>
           ))
@@ -269,71 +329,90 @@ export default function DebtDetailScreen() {
         cancelText=""
         onConfirm={() => setModalAlert((prev) => ({ ...prev, visible: false }))}
       />
-    </>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#F8FAFC' },
-  content: { padding: 20, paddingBottom: 40 },
+  container: { flex: 1 },
+  header: {
+    paddingTop: 50,
+    paddingHorizontal: 20,
+    paddingBottom: 16,
+    borderBottomWidth: 1,
+  },
+  headerInner: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  headerLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  backBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  headerSub: {
+    fontFamily: FONTS.sansBold,
+    fontSize: 11,
+    textTransform: 'uppercase',
+  },
+  headerTitle: {
+    fontFamily: FONTS.serifTitle,
+    fontSize: 17,
+    fontWeight: '800',
+  },
+  content: { padding: 16, paddingBottom: 40 },
   overviewCard: {
-    backgroundColor: '#FFFFFF',
     borderRadius: 20,
     padding: 20,
     marginBottom: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 6,
-    elevation: 2,
+    borderWidth: 1,
   },
   badgeRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
   badge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8 },
-  badgeDebt: { backgroundColor: '#FED7AA' },
-  badgeReceivable: { backgroundColor: '#EDE9FE' },
-  badgeText: { fontSize: 12, fontWeight: '700' },
-  textDebt: { color: '#EA580C' },
-  textReceivable: { color: '#7C3AED' },
-  paidBadge: { backgroundColor: '#DCFCE7', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8 },
-  paidText: { fontSize: 11, fontWeight: '800', color: '#16A34A' },
-  personName: { fontSize: 24, fontWeight: '800', color: '#0F172A', marginBottom: 4 },
-  dateText: { fontSize: 12, color: '#94A3B8' },
-  dueText: { fontSize: 12, color: '#EA580C', fontWeight: '600', marginTop: 2 },
-  statGrid: { flexDirection: 'row', justifyContent: 'space-between', marginVertical: 16, borderTopWidth: 1, borderTopColor: '#F1F5F9', paddingTop: 12 },
+  badgeText: { fontSize: 12, fontWeight: '700', fontFamily: FONTS.sansBold },
+  paidBadge: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8 },
+  paidText: { fontSize: 11, fontWeight: '800', fontFamily: FONTS.sansBold },
+  personName: { fontSize: 24, fontWeight: '800', fontFamily: FONTS.serifTitle, marginBottom: 4 },
+  dateText: { fontSize: 12, fontFamily: FONTS.sansRegular },
+  dueText: { fontSize: 12, fontWeight: '600', marginTop: 2, fontFamily: FONTS.sansMedium },
+  statGrid: { flexDirection: 'row', justifyContent: 'space-between', marginVertical: 16, borderTopWidth: 1, paddingTop: 12 },
   statBox: { flex: 1 },
-  statLabel: { fontSize: 11, color: '#64748B' },
-  statValue: { fontSize: 14, fontWeight: '800', color: '#0F172A', marginTop: 4 },
-  progressBar: { height: 8, backgroundColor: '#E2E8F0', borderRadius: 4, overflow: 'hidden' },
+  statLabel: { fontSize: 11, fontFamily: FONTS.sansMedium },
+  statValue: { fontSize: 14, fontWeight: '800', marginTop: 4, fontFamily: FONTS.sansBold },
+  progressBar: { height: 8, borderRadius: 4, overflow: 'hidden' },
   progressFill: { height: '100%', borderRadius: 4 },
-  progressText: { fontSize: 12, color: '#64748B', textAlign: 'right', marginTop: 4, fontWeight: '600' },
+  progressText: { fontSize: 12, textAlign: 'right', marginTop: 4, fontWeight: '600', fontFamily: FONTS.sansMedium },
   payBtn: {
-    backgroundColor: '#2563EB',
     borderRadius: 14,
     paddingVertical: 14,
     alignItems: 'center',
     marginBottom: 16,
   },
-  payBtnText: { color: '#FFFFFF', fontSize: 15, fontWeight: '700' },
+  payBtnText: { fontSize: 15, fontWeight: '700', fontFamily: FONTS.sansBold },
   formCard: {
-    backgroundColor: '#FFFFFF',
     borderRadius: 16,
     padding: 16,
     marginBottom: 16,
     borderWidth: 1,
-    borderColor: '#E2E8F0',
   },
-  formTitle: { fontSize: 16, fontWeight: '700', color: '#0F172A', marginBottom: 12 },
-  label: { fontSize: 13, fontWeight: '600', color: '#64748B', marginTop: 8, marginBottom: 6 },
+  formTitle: { fontSize: 16, fontWeight: '700', fontFamily: FONTS.sansBold, marginBottom: 12 },
+  label: { fontSize: 13, fontWeight: '600', fontFamily: FONTS.sansMedium, marginTop: 8, marginBottom: 6 },
   amountInput: {
-    backgroundColor: '#F8FAFC',
     borderRadius: 12,
     paddingHorizontal: 16,
     paddingVertical: 12,
-    fontSize: 22,
+    fontSize: 20,
     fontWeight: '700',
-    color: '#0F172A',
+    fontFamily: FONTS.sansBold,
     borderWidth: 1,
-    borderColor: '#E2E8F0',
   },
   accountRow: { flexDirection: 'row', marginBottom: 6 },
   accountChip: {
@@ -342,45 +421,38 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: 10,
-    backgroundColor: '#F1F5F9',
     marginRight: 8,
+    borderWidth: 1,
   },
-  accountChipSelected: { backgroundColor: '#DBEAFE', borderWidth: 1.5, borderColor: '#2563EB' },
   accountIcon: { fontSize: 16, marginRight: 6 },
-  accountName: { fontSize: 13, color: '#64748B', fontWeight: '500' },
-  accountNameSelected: { color: '#2563EB', fontWeight: '700' },
+  accountName: { fontSize: 13, fontFamily: FONTS.sansMedium },
   input: {
-    backgroundColor: '#F8FAFC',
     borderRadius: 10,
     paddingHorizontal: 14,
     paddingVertical: 10,
-    fontSize: 15,
-    color: '#0F172A',
+    fontSize: 14,
     borderWidth: 1,
-    borderColor: '#E2E8F0',
+    fontFamily: FONTS.sansRegular,
   },
   saveBtn: {
-    backgroundColor: '#16A34A',
     borderRadius: 12,
-    paddingVertical: 12,
+    paddingVertical: 14,
     alignItems: 'center',
-    marginTop: 16,
+    marginTop: 14,
   },
-  saveBtnText: { color: '#FFFFFF', fontSize: 15, fontWeight: '700' },
-  historyTitle: { fontSize: 16, fontWeight: '700', color: '#0F172A', marginVertical: 8 },
-  emptyText: { textAlign: 'center', color: '#94A3B8', marginTop: 12 },
+  saveBtnText: { color: '#FFFFFF', fontSize: 14, fontWeight: '700', fontFamily: FONTS.sansBold },
+  historyTitle: { fontSize: 16, fontWeight: '700', fontFamily: FONTS.sansBold, marginBottom: 10 },
+  emptyText: { textAlign: 'center', marginTop: 12, fontFamily: FONTS.sansRegular },
   paymentCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    padding: 12,
+    borderRadius: 14,
+    padding: 14,
     marginBottom: 8,
     borderWidth: 1,
-    borderColor: '#E2E8F0',
   },
   paymentTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  paymentAccount: { fontSize: 13, fontWeight: '700', color: '#0F172A' },
-  paymentAmount: { fontSize: 14, fontWeight: '800', color: '#16A34A' },
+  paymentAccount: { fontSize: 14, fontWeight: '700', fontFamily: FONTS.sansBold },
+  paymentAmount: { fontSize: 15, fontWeight: '800', fontFamily: FONTS.sansBold },
   paymentBottom: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 4 },
-  paymentDate: { fontSize: 11, color: '#94A3B8' },
-  paymentNote: { fontSize: 12, color: '#64748B', fontStyle: 'italic' },
+  paymentDate: { fontSize: 12, fontFamily: FONTS.sansRegular },
+  paymentNote: { fontSize: 12, fontStyle: 'italic', fontFamily: FONTS.sansRegular },
 });

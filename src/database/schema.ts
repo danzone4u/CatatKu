@@ -284,7 +284,68 @@ export async function migrateDbIfNeeded(db: SQLiteDatabase) {
   } catch {}
 
   try {
-    await db.execAsync('ALTER TABLE accounts ADD COLUMN min_balance REAL DEFAULT 0;');
+    await db.execAsync('ALTER TABLE recurring_rules ADD COLUMN is_auto_execute INTEGER NOT NULL DEFAULT 1;');
+  } catch {}
+
+  try {
+    await db.execAsync('ALTER TABLE recurring_rules ADD COLUMN last_paid_period TEXT;');
+  } catch {}
+
+  // Migrasi aman data dari monthly_bills lama ke recurring_rules jika ada
+  try {
+    const oldBills = await db.getAllAsync<{
+      id: number;
+      cashbook_id: number;
+      name: string;
+      amount: number;
+      due_day: number;
+      category_id: number | null;
+      account_id: number | null;
+      last_paid_month: string | null;
+      note: string | null;
+      is_active: number;
+    }>('SELECT * FROM monthly_bills');
+
+    if (oldBills && oldBills.length > 0) {
+      const today = new Date();
+      const currentYear = today.getFullYear();
+      const currentMonth = today.getMonth() + 1;
+
+      for (const bill of oldBills) {
+        // Cek kategori default jika null
+        let catId = bill.category_id;
+        if (!catId) {
+          const firstCat = await db.getFirstAsync<{ id: number }>('SELECT id FROM categories LIMIT 1');
+          catId = firstCat?.id ?? 1;
+        }
+
+        const dueDayClamped = Math.min(Math.max(bill.due_day || 1, 1), 28);
+        const nextDueDate = `${currentYear}-${String(currentMonth).padStart(2, '0')}-${String(dueDayClamped).padStart(2, '0')}`;
+
+        // Cek apakah sudah pernah dipindah (cek duplikasi nama + cashbook)
+        const exists = await db.getFirstAsync(
+          'SELECT id FROM recurring_rules WHERE cashbook_id = ? AND note = ? AND amount = ?',
+          bill.cashbook_id,
+          bill.name,
+          bill.amount
+        );
+
+        if (!exists) {
+          await db.runAsync(
+            `INSERT INTO recurring_rules (cashbook_id, account_id, category_id, type, amount, note, frequency, next_due_date, is_auto_execute, last_paid_period, is_active)
+             VALUES (?, ?, ?, 'expense', ?, ?, 'monthly', ?, 0, ?, ?)`,
+            bill.cashbook_id,
+            bill.account_id ?? 1,
+            catId,
+            bill.amount,
+            bill.name,
+            nextDueDate,
+            bill.last_paid_month,
+            bill.is_active ?? 1
+          );
+        }
+      }
+    }
   } catch {}
 
   try {
@@ -300,6 +361,8 @@ export async function migrateDbIfNeeded(db: SQLiteDatabase) {
         frequency TEXT NOT NULL CHECK(frequency IN ('daily', 'weekly', 'monthly')),
         next_due_date TEXT NOT NULL,
         last_processed TEXT,
+        is_auto_execute INTEGER NOT NULL DEFAULT 1,
+        last_paid_period TEXT,
         is_active INTEGER NOT NULL DEFAULT 1,
         created_at TEXT NOT NULL DEFAULT (datetime('now')),
         FOREIGN KEY (cashbook_id) REFERENCES cashbooks(id) ON DELETE CASCADE,

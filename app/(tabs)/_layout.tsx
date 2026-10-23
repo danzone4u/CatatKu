@@ -89,12 +89,6 @@ export default function TabLayout() {
           ),
         }}
       />
-      <Tabs.Screen
-        name="debts"
-        options={{
-          href: null, // Sembunyikan dari tab bar bawah, tapi route tetap bisa diakses lewat router.push('/(tabs)/debts')
-        }}
-      />
     </Tabs>
   );
 }

@@ -1,7 +1,7 @@
 import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
 import type { SQLiteDatabase } from 'expo-sqlite';
-import { getDebts, getMonthlyBills } from '../database/queries';
+import { getDebts, getRecurringRules } from '../database/queries';
 import { formatRupiah } from './currency';
 
 // Konfigurasi notifikasi di foreground
@@ -48,26 +48,30 @@ export async function checkDueReminders(db: SQLiteDatabase, cashbookId: number):
   const currentDay = today.getDate();
 
   try {
-    // 1. Tagihan Bulanan
-    const bills = await getMonthlyBills(db, cashbookId);
-    for (const b of bills) {
-      if (b.is_active === 0) continue;
-      // Cek apakah bulan ini sudah dibayar
-      if (b.last_paid_month === currentMonthStr) continue;
+    // 1. Tagihan & Transaksi Terjadwal Manual (is_auto_execute = 0)
+    const scheduledRules = await getRecurringRules(db, cashbookId);
+    for (const r of scheduledRules) {
+      if (r.is_active === 0) continue;
+      // Jika manual bill, cek apakah periode bulan ini sudah dibayar
+      if (r.is_auto_execute === 0 && r.last_paid_period === currentMonthStr) continue;
 
-      const daysDiff = b.due_day - currentDay;
-      // Notifikasi jika jatuh tempo hari ini, besok, atau dalam 3 hari ke depan, atau sudah lewat
+      const dueDate = new Date(r.next_due_date.replace(' ', 'T'));
+      if (isNaN(dueDate.getTime())) continue;
+
+      const diffTime = dueDate.getTime() - today.getTime();
+      const daysDiff = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
       if (daysDiff <= 3) {
         items.push({
-          id: `bill-${b.id}`,
-          title: `Tagihan: ${b.name}`,
+          id: `scheduled-${r.id}`,
+          title: r.is_auto_execute === 0 ? `Tagihan: ${r.note || r.category_name}` : `Jadwal: ${r.note || r.category_name}`,
           description: daysDiff < 0 
             ? `Sudah lewat jatuh tempo ${Math.abs(daysDiff)} hari!` 
             : daysDiff === 0 
             ? 'Jatuh tempo HARI INI!' 
-            : `Jatuh tempo ${daysDiff} hari lagi (Tgl ${b.due_day})`,
-          amount: b.amount,
-          dueDateStr: `Tgl ${b.due_day} ${currentMonthStr}`,
+            : `Jatuh tempo ${daysDiff} hari lagi (${r.next_due_date.slice(0, 10)})`,
+          amount: r.amount,
+          dueDateStr: r.next_due_date.slice(0, 10),
           daysRemaining: daysDiff,
           type: 'bill',
         });

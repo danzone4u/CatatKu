@@ -53,16 +53,15 @@ interface ShortcutItem {
 const ALL_AVAILABLE_SHORTCUTS: ShortcutItem[] = [
   { id: 'wallets', name: 'Dompet', route: '/wallets', iconType: 'wallet' },
   { id: 'transfer', name: 'Transfer', route: '/transfer', iconType: 'transfer' },
-  { id: 'bills', name: 'Tagihan', route: '/bills', iconType: 'bills' },
-  { id: 'debts', name: 'Hutang', route: '/(tabs)/debts', iconType: 'debts' },
+  { id: 'recurring', name: 'Tagihan', route: '/recurring', iconType: 'recurring' },
+  { id: 'debts', name: 'Hutang', route: '/debts', iconType: 'debts' },
   { id: 'budget', name: 'Budget', route: '/category-budgets', iconType: 'budget' },
   { id: 'savings', name: 'Nabung', route: '/savings-goals', iconType: 'savings' },
   { id: 'cashier', name: 'Kasir', route: '/cashier-calculator', iconType: 'cashier' },
-  { id: 'recurring', name: 'Rutin', route: '/recurring', iconType: 'recurring' },
-  { id: 'export', name: 'Laporan', route: '/(tabs)/settings', iconType: 'export' },
+  { id: 'export', name: 'Laporan', route: '/(tabs)/reports', iconType: 'export' },
 ];
 
-const DEFAULT_SHORTCUT_IDS = ['wallets', 'transfer', 'bills', 'debts'];
+const DEFAULT_SHORTCUT_IDS = ['wallets', 'transfer', 'recurring', 'debts'];
 const SETTINGS_KEY = 'cashbook_screen_shortcuts_v1';
 
 export default function DashboardScreen() {
@@ -119,8 +118,18 @@ export default function DashboardScreen() {
       if (saved) {
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed) && parsed.length > 0) {
-          setActiveShortcutIds(parsed);
-          return;
+          // Migrasi otomatis: ganti 'bills' lama dengan 'recurring', hapus ID usang
+          const validIds = ALL_AVAILABLE_SHORTCUTS.map((s) => s.id);
+          const sanitized = Array.from(
+            new Set(
+              parsed.map((id: string) => (id === 'bills' ? 'recurring' : id))
+            )
+          ).filter((id) => validIds.includes(id as string));
+
+          if (sanitized.length > 0) {
+            setActiveShortcutIds(sanitized as string[]);
+            return;
+          }
         }
       }
       setActiveShortcutIds(DEFAULT_SHORTCUT_IDS);
@@ -444,7 +453,14 @@ export default function DashboardScreen() {
         </View>
 
         {/* Ringkasan Hutang / Piutang Compact Card */}
-        <View style={[styles.debtOverview, { backgroundColor: palette.card, borderColor: palette.border }]}>
+        <Pressable
+          style={({ pressed }) => [
+            styles.debtOverview,
+            { backgroundColor: palette.card, borderColor: palette.border },
+            pressed && { opacity: 0.8 },
+          ]}
+          onPress={() => router.push('/debts')}
+        >
           <View style={styles.debtCol}>
             <Text style={[styles.debtSub, { color: palette.inkMuted }]}>Sisa Hutang</Text>
             <Text style={[styles.debtVal, { color: palette.expense }]}>{formatRupiah(debtSummary.total_debt)}</Text>
@@ -454,7 +470,7 @@ export default function DashboardScreen() {
             <Text style={[styles.debtSub, { color: palette.inkMuted }]}>Piutang Belum Cair</Text>
             <Text style={[styles.recVal, { color: palette.income }]}>{formatRupiah(debtSummary.total_receivable)}</Text>
           </View>
-        </View>
+        </Pressable>
 
         {/* Saldo per Rekening / Dompet */}
         {accounts.length > 0 && (
@@ -548,19 +564,24 @@ export default function DashboardScreen() {
           )}
         </View>
 
-        {/* Primary Action Button */}
-        <Pressable
-          style={({ pressed }) => [styles.addButton, pressed && styles.addButtonPressed]}
-          onPress={() => router.push('/add-transaction')}
-        >
-          <Text style={styles.addButtonText}>+ Catat Transaksi Baru</Text>
-        </Pressable>
-
         {/* Footer Copyright Terkunci di Bawah */}
         <View style={styles.footerWrap}>
           <Text style={[styles.footerText, { color: palette.inkMuted }]}>© 2026 CatatKu</Text>
         </View>
       </ScrollView>
+
+      {/* Floating Action Button (FAB) + Catat Transaksi */}
+      <Pressable
+        style={({ pressed }) => [
+          styles.fabButton,
+          { backgroundColor: palette.primary },
+          pressed && styles.fabButtonPressed,
+        ]}
+        onPress={() => router.push('/add-transaction')}
+        accessibilityLabel="Catat Transaksi"
+      >
+        <Text style={styles.fabIcon}>+</Text>
+      </Pressable>
 
       {/* Modal Kustomisasi Pintasan Fitur */}
       <Modal
@@ -673,7 +694,7 @@ export default function DashboardScreen() {
 const styles = StyleSheet.create({
   screenWrapper: { flex: 1, backgroundColor: PALETTE.canvas },
   container: { flex: 1 },
-  content: { paddingHorizontal: 16, paddingTop: 10, paddingBottom: 24 },
+  content: { paddingHorizontal: 16, paddingTop: 10, paddingBottom: 88 },
   header: { marginBottom: 14, paddingTop: 40 },
   backBtn: {
     flexDirection: 'row',
@@ -977,23 +998,33 @@ const styles = StyleSheet.create({
   breakdownRight: { alignItems: 'flex-end' },
   breakdownAmount: { fontFamily: FONTS.sansBold, fontSize: 12, color: PALETTE.ink },
   breakdownPercent: { fontFamily: FONTS.sansRegular, fontSize: 10, color: PALETTE.inkMuted, marginTop: 1 },
-  addButton: {
-    backgroundColor: PALETTE.primary,
-    paddingVertical: 14,
-    borderRadius: 16,
+  fabButton: {
+    position: 'absolute',
+    bottom: 24,
+    right: 20,
+    width: 58,
+    height: 58,
+    borderRadius: 29,
+    justifyContent: 'center',
     alignItems: 'center',
-    ...PALETTE.shadowMedium,
+    elevation: 6,
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.35,
+    shadowRadius: 6,
+    zIndex: 99,
   },
-  addButtonPressed: {
-    transform: [{ scale: 0.985 }],
+  fabButtonPressed: {
+    transform: [{ scale: 0.92 }],
     opacity: 0.9,
   },
-  addButtonText: {
-    fontFamily: FONTS.sansBold,
-    fontSize: 14,
-    fontWeight: '700',
+  fabIcon: {
+    fontSize: 32,
+    lineHeight: 34,
+    fontWeight: '500',
     color: '#FFFFFF',
-    letterSpacing: 0.2,
+    textAlign: 'center',
+    marginTop: -2,
   },
 
   // Modal Styling

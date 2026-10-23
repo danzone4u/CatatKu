@@ -450,7 +450,7 @@ export default function GlobalSettingsScreen() {
 
               <Text style={[styles.faqQ, { color: palette.ink }]}>Bagaimana cara memindahkan data ke HP baru?</Text>
               <Text style={[styles.faqA, { color: palette.inkMuted }]}>
-                Gunakan menu "Bagikan Cadangan Lengkap" di pengaturan ini, kirim file backup (.json) ke HP baru Anda, lalu buka menu "Pulihkan Data" di HP baru.
+                Gunakan menu &quot;Bagikan Cadangan Lengkap&quot; di pengaturan ini, kirim file backup (.json) ke HP baru Anda, lalu buka menu &quot;Pulihkan Data&quot; di HP baru.
               </Text>
 
               <Text style={[styles.faqQ, { color: palette.ink }]}>Apa beda Pengaturan Aplikasi dan Pengaturan Catatan?</Text>
