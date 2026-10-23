@@ -7,8 +7,10 @@ import {
   Switch,
   TextInput,
   Modal,
+  ActivityIndicator,
   useWindowDimensions,
 } from 'react-native';
+import Constants from 'expo-constants';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useCallback, useState } from 'react';
 import { useFocusEffect, router, Stack } from 'expo-router';
@@ -22,6 +24,7 @@ import {
   exportBackupToLocalStorage,
   restoreBackup,
 } from '../src/utils/backup';
+import { checkForAppUpdate, openDownloadPage } from '../src/utils/appUpdater';
 import * as DocumentPicker from 'expo-document-picker';
 import { File } from 'expo-file-system';
 import * as LocalAuthentication from 'expo-local-authentication';
@@ -45,6 +48,7 @@ export default function GlobalSettingsScreen() {
   // Info Modals
   const [showAboutModal, setShowAboutModal] = useState(false);
   const [showFaqModal, setShowFaqModal] = useState(false);
+  const [checkingUpdate, setCheckingUpdate] = useState(false);
 
   // Modern Confirm Modal
   const [confirmModal, setConfirmModal] = useState<{
@@ -482,14 +486,79 @@ export default function GlobalSettingsScreen() {
 
             <View style={styles.aboutBadgeRow}>
               <Text style={{ fontSize: 44 }}>📱💰</Text>
-              <View>
+              <View style={{ flex: 1 }}>
                 <Text style={[styles.aboutAppTitle, { color: palette.ink }]}>CatatKu</Text>
-                <Text style={[styles.aboutAppVersion, { color: palette.primary }]}>Versi 1.5.0 (Build 2026.1)</Text>
+                <Text style={[styles.aboutAppVersion, { color: palette.primary }]}>
+                  Versi {Constants.expoConfig?.version || '1.0.0'}
+                </Text>
                 <Text style={[styles.aboutTagline, { color: palette.inkMuted }]}>Catatan Rapi, Finansial Pasti</Text>
               </View>
             </View>
 
-            <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: 280, marginVertical: 10 }}>
+            {/* Tombol Cek Pembaruan di Dalam Modal About */}
+            <Pressable
+              style={({ pressed }) => [
+                styles.checkUpdateBtn,
+                { backgroundColor: palette.cardMuted, borderColor: palette.border },
+                pressed && { opacity: 0.8 },
+              ]}
+              disabled={checkingUpdate}
+              onPress={async () => {
+                setCheckingUpdate(true);
+                try {
+                  const res = await checkForAppUpdate();
+                  if (res.error) {
+                    showModalAlert('Pemeriksaan Gagal', res.error, 'danger', '⚠️');
+                    return;
+                  }
+
+                  if (res.hasUpdate) {
+                    setShowAboutModal(false);
+                    setConfirmModal({
+                      visible: true,
+                      type: 'info',
+                      icon: '🚀',
+                      title: `Pembaruan Tersedia (v${res.latestVersion})`,
+                      message: `Versi terbaru v${res.latestVersion} telah dirilis!\n\nCatatan Rilis:\n${res.releaseNotes || 'Peningkatan stabilitas aplikasi.'}`,
+                      cancelText: 'Nanti Saja',
+                      confirmText: 'Unduh Sekarang',
+                      onConfirm: () => {
+                        setConfirmModal((prev) => ({ ...prev, visible: false }));
+                        openDownloadPage(res.downloadUrl);
+                      },
+                    });
+                  } else {
+                    showModalAlert(
+                      'Aplikasi Sudah Terbaru',
+                      `Anda telah menggunakan versi terbaru (v${res.currentVersion}). Tidak ada pembaruan saat ini.`,
+                      'success',
+                      '✨'
+                    );
+                  }
+                } catch {
+                  showModalAlert('Gagal', 'Terjadi kesalahan saat memeriksa pembaruan.', 'danger', '⚠️');
+                } finally {
+                  setCheckingUpdate(false);
+                }
+              }}
+            >
+              <View style={styles.checkUpdateLeft}>
+                <Text style={{ fontSize: 18 }}>🔄</Text>
+                <View>
+                  <Text style={[styles.checkUpdateTitle, { color: palette.ink }]}>Cek Pembaruan</Text>
+                  <Text style={[styles.checkUpdateDesc, { color: palette.inkMuted }]}>
+                    Periksa ketersediaan versi rilis terbaru di GitHub
+                  </Text>
+                </View>
+              </View>
+              {checkingUpdate ? (
+                <ActivityIndicator size="small" color={palette.primary} />
+              ) : (
+                <Text style={[styles.linkArrow, { color: palette.inkMuted }]}>›</Text>
+              )}
+            </Pressable>
+
+            <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: 240, marginVertical: 10 }}>
               <Text style={[styles.aboutPara, { color: palette.inkSecondary }]}>
                 CatatKu dirancang sebagai software manajemen keuangan multi-catatan mandiri untuk mengelola arus kas pribadi, organisasi, dan bisnis secara privat, responsif, dan bebas ketergantungan jaringan.
               </Text>
@@ -734,6 +803,30 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   aboutTagline: {
+    fontFamily: FONTS.sansRegular,
+    fontSize: 11,
+    marginTop: 1,
+  },
+  checkUpdateBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 12,
+    borderRadius: 14,
+    borderWidth: 1,
+    marginVertical: 8,
+  },
+  checkUpdateLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    flex: 1,
+  },
+  checkUpdateTitle: {
+    fontFamily: FONTS.sansBold,
+    fontSize: 13,
+  },
+  checkUpdateDesc: {
     fontFamily: FONTS.sansRegular,
     fontSize: 11,
     marginTop: 1,

@@ -5,10 +5,8 @@ import {
   ScrollView,
   Pressable,
   TextInput,
-  ActivityIndicator,
   useWindowDimensions,
 } from 'react-native';
-import Constants from 'expo-constants';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useCallback, useState } from 'react';
 import { useFocusEffect, router } from 'expo-router';
@@ -27,7 +25,6 @@ import {
   exportSingleCashbook,
   importSingleCashbook,
 } from '../../src/utils/backup';
-import { checkForAppUpdate, openDownloadPage } from '../../src/utils/appUpdater';
 import { useCashbookStore } from '../../src/stores/useCashbookStore';
 import { EMOJI_LIST } from '../../src/constants/categories';
 import { FONTS } from '../../src/constants/theme';
@@ -45,7 +42,6 @@ export default function SettingsScreen() {
   const [newCatName, setNewCatName] = useState('');
   const [selectedEmoji, setSelectedEmoji] = useState('📦');
   const [showAddCategory, setShowAddCategory] = useState(false);
-  const [checkingUpdate, setCheckingUpdate] = useState(false);
 
   // Universal Modern Confirm Modal State
   const [confirmModal, setConfirmModal] = useState<{
@@ -419,88 +415,6 @@ export default function SettingsScreen() {
         )}
       </View>
 
-      {/* Tentang & Informasi Aplikasi */}
-      <Text style={[styles.sectionTitle, { color: palette.inkSecondary }]}>TENTANG</Text>
-      <View style={[styles.card, { backgroundColor: palette.card, borderColor: palette.border }]}>
-        <View style={styles.actionRow}>
-          <View style={styles.actionLeft}>
-            <Text style={styles.actionIcon}>📱</Text>
-            <View>
-              <Text style={[styles.actionTitle, { color: palette.ink }]}>Versi Aplikasi</Text>
-              <Text style={[styles.actionDesc, { color: palette.inkMuted }]}>
-                CatatKu v{Constants.expoConfig?.version || '1.0.0'}
-              </Text>
-            </View>
-          </View>
-          <View style={[styles.versionBadge, { backgroundColor: palette.cardMuted, borderColor: palette.border }]}>
-            <Text style={[styles.versionBadgeText, { color: palette.primary }]}>
-              v{Constants.expoConfig?.version || '1.0.0'}
-            </Text>
-          </View>
-        </View>
-
-        <Pressable
-          style={({ pressed }) => [
-            styles.actionRow,
-            { borderTopWidth: 1, borderTopColor: palette.borderSubtle },
-            pressed && { opacity: 0.7 },
-          ]}
-          disabled={checkingUpdate}
-          onPress={async () => {
-            setCheckingUpdate(true);
-            try {
-              const res = await checkForAppUpdate();
-              if (res.error) {
-                showAlert('Pemeriksaan Gagal', res.error, 'danger', '⚠️');
-                return;
-              }
-
-              if (res.hasUpdate) {
-                setConfirmModal({
-                  visible: true,
-                  type: 'info',
-                  icon: '🚀',
-                  title: `Pembaruan Tersedia (v${res.latestVersion})`,
-                  message: `Versi terbaru v${res.latestVersion} telah dirilis!\n\nCatatan Rilis:\n${res.releaseNotes || 'Peningkatan stabilitas aplikasi.'}`,
-                  cancelText: 'Nanti Saja',
-                  confirmText: 'Unduh Sekarang',
-                  onConfirm: () => {
-                    closeConfirmModal();
-                    openDownloadPage(res.downloadUrl);
-                  },
-                });
-              } else {
-                showAlert(
-                  'Aplikasi Sudah Terbaru',
-                  `Anda telah menggunakan versi terbaru (v${res.currentVersion}). Tidak ada pembaruan saat ini.`,
-                  'success',
-                  '✨'
-                );
-              }
-            } catch {
-              showAlert('Gagal', 'Terjadi kesalahan saat memeriksa pembaruan.', 'danger', '⚠️');
-            } finally {
-              setCheckingUpdate(false);
-            }
-          }}
-        >
-          <View style={styles.actionLeft}>
-            <Text style={styles.actionIcon}>🔄</Text>
-            <View>
-              <Text style={[styles.actionTitle, { color: palette.ink }]}>Cek Pembaruan</Text>
-              <Text style={[styles.actionDesc, { color: palette.inkMuted }]}>
-                Periksa ketersediaan versi rilis terbaru
-              </Text>
-            </View>
-          </View>
-          {checkingUpdate ? (
-            <ActivityIndicator size="small" color={palette.primary} />
-          ) : (
-            <Text style={[styles.linkArrow, { color: palette.inkMuted }]}>›</Text>
-          )}
-        </Pressable>
-      </View>
-
       {/* Footer Copyright Terkunci di Paling Bawah */}
       <View style={styles.footerWrap}>
         <Text style={[styles.footerText, { color: palette.inkMuted }]}>© 2026 CatatKu</Text>
@@ -617,16 +531,6 @@ const styles = StyleSheet.create({
   linkArrow: {
     fontSize: 18,
     fontFamily: FONTS.sansBold,
-  },
-  versionBadge: {
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 10,
-    borderWidth: 1,
-  },
-  versionBadgeText: {
-    fontFamily: FONTS.sansBold,
-    fontSize: 12,
   },
   addCategoryBox: {
     padding: 16,
