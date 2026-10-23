@@ -40,6 +40,7 @@ export async function migrateDbIfNeeded(db: SQLiteDatabase) {
         name TEXT NOT NULL,
         type TEXT NOT NULL CHECK(type IN ('cash', 'bank', 'ewallet')),
         balance REAL NOT NULL DEFAULT 0,
+        min_balance REAL NOT NULL DEFAULT 0,
         icon TEXT NOT NULL DEFAULT '💵',
         color TEXT NOT NULL DEFAULT '#16A34A',
         is_default INTEGER NOT NULL DEFAULT 0,
@@ -188,6 +189,7 @@ export async function migrateDbIfNeeded(db: SQLiteDatabase) {
         name TEXT NOT NULL,
         type TEXT NOT NULL CHECK(type IN ('cash', 'bank', 'ewallet')),
         balance REAL NOT NULL DEFAULT 0,
+        min_balance REAL NOT NULL DEFAULT 0,
         icon TEXT NOT NULL DEFAULT '💵',
         color TEXT NOT NULL DEFAULT '#16A34A',
         is_default INTEGER NOT NULL DEFAULT 0,
@@ -295,6 +297,10 @@ export async function migrateDbIfNeeded(db: SQLiteDatabase) {
 
   try {
     await db.execAsync('ALTER TABLE accounts ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0;');
+  } catch {}
+
+  try {
+    await db.execAsync('ALTER TABLE accounts ADD COLUMN min_balance REAL NOT NULL DEFAULT 0;');
   } catch {}
 
   // Migrasi aman data dari monthly_bills lama ke recurring_rules jika ada

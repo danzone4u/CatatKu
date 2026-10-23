@@ -1,4 +1,4 @@
-import { View, Text, StyleSheet, Pressable, ScrollView, TextInput, useWindowDimensions } from 'react-native';
+import { View, Text, StyleSheet, Pressable, ScrollView, TextInput, useWindowDimensions, Modal, KeyboardAvoidingView, Platform } from 'react-native';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useCallback, useState } from 'react';
 import { useFocusEffect, Stack, router } from 'expo-router';
@@ -52,6 +52,10 @@ export default function WalletsScreen() {
     visible: false,
     message: '',
   });
+  const [successModal, setSuccessModal] = useState<{ visible: boolean; message: string }>({
+    visible: false,
+    message: '',
+  });
 
   // Form Account State
   const [name, setName] = useState('');
@@ -61,16 +65,16 @@ export default function WalletsScreen() {
   const [selectedIcon, setSelectedIcon] = useState('💵');
   const [selectedColor, setSelectedColor] = useState(palette.primary);
 
+  const loadAccounts = useCallback(async () => {
+    const list = await getAccounts(db, cashbookId);
+    setAccounts(list);
+  }, [db, cashbookId]);
+
   useFocusEffect(
     useCallback(() => {
       loadAccounts();
-    }, [cashbookId])
+    }, [loadAccounts])
   );
-
-  async function loadAccounts() {
-    const list = await getAccounts(db, cashbookId);
-    setAccounts(list);
-  }
 
   const totalBalance = accounts.reduce((sum, a) => sum + a.calculated_balance, 0);
 
@@ -114,30 +118,46 @@ export default function WalletsScreen() {
 
     const bal = parseRupiahInput(initialBalance);
     const minBal = parseRupiahInput(minBalance);
+    const savedName = name.trim();
+    const isEdit = !!editingAccountId;
 
-    if (editingAccountId) {
-      await updateAccount(db, editingAccountId, {
-        name: name.trim(),
-        type,
-        balance: bal,
-        min_balance: minBal,
-        icon: selectedIcon,
-        color: selectedColor,
+    try {
+      if (editingAccountId) {
+        await updateAccount(db, editingAccountId, {
+          name: savedName,
+          type,
+          balance: bal,
+          min_balance: minBal,
+          icon: selectedIcon,
+          color: selectedColor,
+        });
+      } else {
+        await addAccount(db, {
+          cashbook_id: cashbookId,
+          name: savedName,
+          type,
+          balance: bal,
+          min_balance: minBal,
+          icon: selectedIcon,
+          color: selectedColor,
+        });
+      }
+
+      setShowFormModal(false);
+      await loadAccounts();
+
+      setSuccessModal({
+        visible: true,
+        message: isEdit
+          ? `Data dompet "${savedName}" berhasil diperbarui!`
+          : `Dompet "${savedName}" berhasil disimpan!`,
       });
-    } else {
-      await addAccount(db, {
-        cashbook_id: cashbookId,
-        name: name.trim(),
-        type,
-        balance: bal,
-        min_balance: minBal,
-        icon: selectedIcon,
-        color: selectedColor,
+    } catch (err) {
+      setWarningModal({
+        visible: true,
+        message: 'Gagal menyimpan dompet: ' + String(err),
       });
     }
-
-    setShowFormModal(false);
-    loadAccounts();
   }
 
   function handleDeleteAccount(id: number, accName: string) {
@@ -240,205 +260,6 @@ export default function WalletsScreen() {
           </Text>
         </View>
 
-        {/* Add / Edit Account Form Container */}
-        {showFormModal && (
-          <View
-            style={[
-              styles.formCard,
-              {
-                backgroundColor: palette.card,
-                borderColor: palette.border,
-              },
-            ]}
-          >
-            <View style={styles.formHeaderRow}>
-              <Text style={[styles.formTitle, { color: palette.ink }]}>
-                {editingAccountId ? 'Edit Dompet / Rekening' : 'Tambah Dompet / Rekening Baru'}
-              </Text>
-              <Pressable onPress={() => setShowFormModal(false)} hitSlop={8}>
-                <Text style={[styles.closeFormText, { color: palette.inkMuted }]}>✕</Text>
-              </Pressable>
-            </View>
-
-            {/* Rekomendasi / Preset Cepat Bank & E-Wallet */}
-            {!editingAccountId && (
-              <View style={styles.presetSection}>
-                <Text style={[styles.presetSectionTitle, { color: palette.inkMuted }]}>Pilih Cepat Bank / E-Wallet / Dana Darurat</Text>
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.presetScroll}>
-                  {FINANCIAL_PRESETS.map((p) => (
-                    <Pressable
-                      key={p.key}
-                      style={({ pressed }) => [
-                        styles.presetChip,
-                        {
-                          backgroundColor: palette.cardMuted,
-                          borderColor: p.isEmergency ? '#E11D48' : palette.border,
-                        },
-                        pressed && { opacity: 0.75 },
-                      ]}
-                      onPress={() => applyPreset(p)}
-                    >
-                      <Text style={{ fontSize: 13 }}>{p.icon}</Text>
-                      <BankBadge badgeText={p.badgeText} color={p.color} size="small" />
-                      <Text style={[styles.presetChipText, { color: palette.ink }]}>{p.name}</Text>
-                    </Pressable>
-                  ))}
-                </ScrollView>
-              </View>
-            )}
-
-            <Text style={[styles.label, { color: palette.inkSecondary }]}>Nama Akun</Text>
-            <TextInput
-              style={[
-                styles.input,
-                {
-                  backgroundColor: palette.cardMuted,
-                  borderColor: palette.border,
-                  color: palette.ink,
-                },
-              ]}
-              placeholder="Misal: BCA, Kasir Toko, OVO, Dana Darurat"
-              placeholderTextColor={palette.inkMuted}
-              value={name}
-              onChangeText={setName}
-            />
-
-            <Text style={[styles.label, { color: palette.inkSecondary }]}>Tipe Akun</Text>
-            <View style={styles.typeRow}>
-              {(['cash', 'bank', 'ewallet'] as const).map((t) => (
-                <Pressable
-                  key={t}
-                  style={[
-                    styles.typeBtn,
-                    {
-                      backgroundColor: palette.cardMuted,
-                      borderColor: palette.border,
-                    },
-                    type === t && { backgroundColor: palette.primary, borderColor: palette.primary },
-                  ]}
-                  onPress={() => {
-                    setType(t);
-                    if (t === 'cash') setSelectedIcon('💵');
-                    if (t === 'bank') setSelectedIcon('🏦');
-                    if (t === 'ewallet') setSelectedIcon('📱');
-                  }}
-                >
-                  <Text
-                    style={[
-                      styles.typeBtnText,
-                      { color: palette.inkSecondary },
-                      type === t && { color: '#FFFFFF', fontWeight: '800' },
-                    ]}
-                  >
-                    {t === 'cash' ? 'Tunai' : t === 'bank' ? 'Bank' : 'E-Wallet'}
-                  </Text>
-                </Pressable>
-              ))}
-            </View>
-
-            <View style={{ flexDirection: 'row', gap: 10 }}>
-              <View style={{ flex: 1 }}>
-                <Text style={[styles.label, { color: palette.inkSecondary }]}>Saldo Awal (Rp)</Text>
-                <TextInput
-                  style={[
-                    styles.input,
-                    {
-                      backgroundColor: palette.cardMuted,
-                      borderColor: palette.border,
-                      color: palette.ink,
-                    },
-                  ]}
-                  placeholder="0"
-                  placeholderTextColor={palette.inkMuted}
-                  keyboardType="numeric"
-                  value={initialBalance}
-                  onChangeText={(text) => setInitialBalance(formatNumberThousand(text))}
-                />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={[styles.label, { color: palette.inkSecondary }]}>Batas Saldo Minimum</Text>
-                <TextInput
-                  style={[
-                    styles.input,
-                    {
-                      backgroundColor: palette.cardMuted,
-                      borderColor: palette.border,
-                      color: palette.ink,
-                    },
-                  ]}
-                  placeholder="Contoh: 100.000"
-                  placeholderTextColor={palette.inkMuted}
-                  keyboardType="numeric"
-                  value={minBalance}
-                  onChangeText={(text) => setMinBalance(formatNumberThousand(text))}
-                />
-              </View>
-            </View>
-
-            <Text style={[styles.label, { color: palette.inkSecondary }]}>Pilih Ikon</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.pickerRow}>
-              {EMOJIS.map((e) => (
-                <Pressable
-                  key={e}
-                  style={[
-                    styles.emojiBtn,
-                    {
-                      backgroundColor: palette.cardMuted,
-                      borderColor: palette.border,
-                    },
-                    selectedIcon === e && {
-                      borderColor: palette.primary,
-                      backgroundColor: isDarkMode ? '#16313B' : '#EAF6F3',
-                    },
-                  ]}
-                  onPress={() => setSelectedIcon(e)}
-                >
-                  <Text style={styles.emojiText}>{e}</Text>
-                </Pressable>
-              ))}
-            </ScrollView>
-
-            <Text style={[styles.label, { color: palette.inkSecondary }]}>Pilih Warna Aksen</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.colorScroll}>
-              {COLORS.map((c) => (
-                <Pressable
-                  key={c}
-                  style={[styles.colorBtn, { backgroundColor: c }, selectedColor === c && styles.colorBtnSelected]}
-                  onPress={() => setSelectedColor(c)}
-                />
-              ))}
-            </ScrollView>
-
-            <View style={styles.formActionRow}>
-              <Pressable
-                style={[
-                  styles.cancelFormBtn,
-                  {
-                    backgroundColor: palette.cardMuted,
-                    borderColor: palette.border,
-                  },
-                ]}
-                onPress={() => setShowFormModal(false)}
-              >
-                <Text style={[styles.cancelFormBtnText, { color: palette.inkMuted }]}>Batal</Text>
-              </Pressable>
-
-              <Pressable
-                style={({ pressed }) => [
-                  styles.submitBtn,
-                  { backgroundColor: palette.primary },
-                  pressed && { opacity: 0.85, transform: [{ scale: 0.98 }] },
-                ]}
-                onPress={handleSaveAccount}
-              >
-                <Text style={styles.submitBtnText}>
-                  {editingAccountId ? 'Perbarui Dompet' : 'Simpan Akun'}
-                </Text>
-              </Pressable>
-            </View>
-          </View>
-        )}
-
         {/* Header List */}
         <View style={styles.listHeader}>
           <Text style={[styles.listTitle, { color: palette.ink }]}>Daftar Akun ({accounts.length})</Text>
@@ -474,6 +295,236 @@ export default function WalletsScreen() {
           <Text style={[styles.footerText, { color: palette.inkMuted }]}>© 2026 CatatKu</Text>
         </View>
       </ScrollView>
+
+      {/* Modal Tambah / Edit Dompet */}
+      <Modal
+        visible={showFormModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowFormModal(false)}
+      >
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          style={styles.modalOverlay}
+        >
+          <View
+            style={[
+              styles.formModalCard,
+              {
+                backgroundColor: palette.card,
+                borderColor: palette.border,
+              },
+            ]}
+          >
+            <View style={styles.formHeaderRow}>
+              <Text style={[styles.formTitle, { color: palette.ink }]}>
+                {editingAccountId ? 'Edit Dompet / Rekening' : 'Tambah Dompet / Rekening Baru'}
+              </Text>
+              <Pressable onPress={() => setShowFormModal(false)} hitSlop={8}>
+                <Text style={[styles.closeFormText, { color: palette.inkMuted }]}>✕</Text>
+              </Pressable>
+            </View>
+
+            <ScrollView
+              showsVerticalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
+              contentContainerStyle={{ paddingBottom: 8 }}
+            >
+              {/* Rekomendasi / Preset Cepat Bank & E-Wallet */}
+              {!editingAccountId && (
+                <View style={styles.presetSection}>
+                  <Text style={[styles.presetSectionTitle, { color: palette.inkMuted }]}>
+                    Pilih Cepat Bank / E-Wallet / Dana Darurat
+                  </Text>
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.presetScroll}>
+                    {FINANCIAL_PRESETS.map((p) => (
+                      <Pressable
+                        key={p.key}
+                        style={({ pressed }) => [
+                          styles.presetChip,
+                          {
+                            backgroundColor: palette.cardMuted,
+                            borderColor: p.isEmergency ? '#E11D48' : palette.border,
+                          },
+                          pressed && { opacity: 0.75 },
+                        ]}
+                        onPress={() => applyPreset(p)}
+                      >
+                        <Text style={{ fontSize: 13 }}>{p.icon}</Text>
+                        <BankBadge badgeText={p.badgeText} color={p.color} size="small" />
+                        <Text style={[styles.presetChipText, { color: palette.ink }]}>{p.name}</Text>
+                      </Pressable>
+                    ))}
+                  </ScrollView>
+                </View>
+              )}
+
+              <Text style={[styles.label, { color: palette.inkSecondary }]}>Nama Akun</Text>
+              <TextInput
+                style={[
+                  styles.input,
+                  {
+                    backgroundColor: palette.cardMuted,
+                    borderColor: palette.border,
+                    color: palette.ink,
+                  },
+                ]}
+                placeholder="Misal: BCA, Kasir Toko, OVO, Dana Darurat"
+                placeholderTextColor={palette.inkMuted}
+                value={name}
+                onChangeText={setName}
+              />
+
+              <Text style={[styles.label, { color: palette.inkSecondary }]}>Tipe Akun</Text>
+              <View style={styles.typeRow}>
+                {(['cash', 'bank', 'ewallet'] as const).map((t) => (
+                  <Pressable
+                    key={t}
+                    style={[
+                      styles.typeBtn,
+                      {
+                        backgroundColor: palette.cardMuted,
+                        borderColor: palette.border,
+                      },
+                      type === t && { backgroundColor: palette.primary, borderColor: palette.primary },
+                    ]}
+                    onPress={() => {
+                      setType(t);
+                      if (t === 'cash') setSelectedIcon('💵');
+                      if (t === 'bank') setSelectedIcon('🏦');
+                      if (t === 'ewallet') setSelectedIcon('📱');
+                    }}
+                  >
+                    <Text
+                      style={[
+                        styles.typeBtnText,
+                        { color: palette.inkSecondary },
+                        type === t && { color: '#FFFFFF', fontWeight: '800' },
+                      ]}
+                    >
+                      {t === 'cash' ? 'Tunai' : t === 'bank' ? 'Bank' : 'E-Wallet'}
+                    </Text>
+                  </Pressable>
+                ))}
+              </View>
+
+              <View style={{ flexDirection: 'row', gap: 10 }}>
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.label, { color: palette.inkSecondary }]}>Saldo Awal (Rp)</Text>
+                  <TextInput
+                    style={[
+                      styles.input,
+                      {
+                        backgroundColor: palette.cardMuted,
+                        borderColor: palette.border,
+                        color: palette.ink,
+                      },
+                    ]}
+                    placeholder="0"
+                    placeholderTextColor={palette.inkMuted}
+                    keyboardType="numeric"
+                    value={initialBalance}
+                    onChangeText={(text) => setInitialBalance(formatNumberThousand(text))}
+                  />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.label, { color: palette.inkSecondary }]}>Batas Saldo Minimum</Text>
+                  <TextInput
+                    style={[
+                      styles.input,
+                      {
+                        backgroundColor: palette.cardMuted,
+                        borderColor: palette.border,
+                        color: palette.ink,
+                      },
+                    ]}
+                    placeholder="Contoh: 100.000"
+                    placeholderTextColor={palette.inkMuted}
+                    keyboardType="numeric"
+                    value={minBalance}
+                    onChangeText={(text) => setMinBalance(formatNumberThousand(text))}
+                  />
+                </View>
+              </View>
+
+              <Text style={[styles.label, { color: palette.inkSecondary }]}>Pilih Ikon</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.pickerRow}>
+                {EMOJIS.map((e) => (
+                  <Pressable
+                    key={e}
+                    style={[
+                      styles.emojiBtn,
+                      {
+                        backgroundColor: palette.cardMuted,
+                        borderColor: palette.border,
+                      },
+                      selectedIcon === e && {
+                        borderColor: palette.primary,
+                        backgroundColor: isDarkMode ? '#16313B' : '#EAF6F3',
+                      },
+                    ]}
+                    onPress={() => setSelectedIcon(e)}
+                  >
+                    <Text style={styles.emojiText}>{e}</Text>
+                  </Pressable>
+                ))}
+              </ScrollView>
+
+              <Text style={[styles.label, { color: palette.inkSecondary }]}>Pilih Warna Aksen</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.colorScroll}>
+                {COLORS.map((c) => (
+                  <Pressable
+                    key={c}
+                    style={[styles.colorBtn, { backgroundColor: c }, selectedColor === c && styles.colorBtnSelected]}
+                    onPress={() => setSelectedColor(c)}
+                  />
+                ))}
+              </ScrollView>
+
+              <View style={styles.formActionRow}>
+                <Pressable
+                  style={[
+                    styles.cancelFormBtn,
+                    {
+                      backgroundColor: palette.cardMuted,
+                      borderColor: palette.border,
+                    },
+                  ]}
+                  onPress={() => setShowFormModal(false)}
+                >
+                  <Text style={[styles.cancelFormBtnText, { color: palette.inkMuted }]}>Batal</Text>
+                </Pressable>
+
+                <Pressable
+                  style={({ pressed }) => [
+                    styles.submitBtn,
+                    { backgroundColor: palette.primary },
+                    pressed && { opacity: 0.85, transform: [{ scale: 0.98 }] },
+                  ]}
+                  onPress={handleSaveAccount}
+                >
+                  <Text style={styles.submitBtnText}>
+                    {editingAccountId ? 'Perbarui Dompet' : 'Simpan Akun'}
+                  </Text>
+                </Pressable>
+              </View>
+            </ScrollView>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
+
+      {/* Modal Konfirmasi Sukses */}
+      <ModernConfirmModal
+        visible={successModal.visible}
+        type="success"
+        icon="✅"
+        title="Berhasil Disimpan"
+        message={successModal.message}
+        cancelText=""
+        confirmText="Oke"
+        onCancel={() => setSuccessModal({ visible: false, message: '' })}
+        onConfirm={() => setSuccessModal({ visible: false, message: '' })}
+      />
 
       <ModernConfirmModal
         visible={!!deleteTarget}
@@ -572,16 +623,25 @@ const styles = StyleSheet.create({
     fontFamily: FONTS.sansRegular,
     fontSize: 12,
   },
-  formCard: {
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.55)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 16,
+  },
+  formModalCard: {
+    width: '100%',
+    maxWidth: 520,
+    maxHeight: '88%',
     padding: 20,
     borderRadius: 22,
     borderWidth: 1,
-    marginBottom: 10,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 10,
-    elevation: 4,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.18,
+    shadowRadius: 12,
+    elevation: 8,
   },
   formHeaderRow: {
     flexDirection: 'row',

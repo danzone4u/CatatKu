@@ -44,26 +44,30 @@ export default function AccountCard({
   const isNegative = account.calculated_balance < 0;
 
   return (
-    <Pressable
-      style={({ pressed }) => [
+    <View
+      style={[
         styles.card,
         {
           backgroundColor: palette.card,
           borderColor: isBelowMin || isNegative ? palette.expense : palette.border,
           borderLeftColor: account.color,
         },
-        pressed && { opacity: 0.85, transform: [{ scale: 0.99 }] },
       ]}
-      onPress={onPress}
-      onLongPress={onLongPress}
     >
       <View style={styles.topRow}>
-        <View style={[styles.iconBox, { backgroundColor: palette.cardMuted }]}>
-          <Text style={styles.icon}>{account.icon}</Text>
-        </View>
-        <View style={{ flex: 1 }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap', flex: 1 }}>
+        <Pressable
+          style={({ pressed }) => [
+            styles.headerPressable,
+            pressed && { opacity: 0.75 },
+          ]}
+          onPress={onPress}
+          onLongPress={onLongPress}
+        >
+          <View style={[styles.iconBox, { backgroundColor: palette.cardMuted }]}>
+            <Text style={styles.icon}>{account.icon}</Text>
+          </View>
+          <View style={{ flex: 1 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
               <Text style={[styles.name, { color: palette.ink }]} numberOfLines={1}>
                 {account.name}
               </Text>
@@ -78,63 +82,72 @@ export default function AccountCard({
                 </View>
               )}
             </View>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-              {/* Tombol Pindah Naik/Turun */}
-              {onMoveUp && canMoveUp && (
-                <Pressable
-                  hitSlop={8}
-                  style={({ pressed }) => [styles.actionBtn, { backgroundColor: palette.cardMuted }, pressed && { opacity: 0.6 }]}
-                  onPress={onMoveUp}
-                >
-                  <Text style={[styles.arrowIconText, { color: palette.inkSecondary }]}>▲</Text>
-                </Pressable>
-              )}
-              {onMoveDown && canMoveDown && (
-                <Pressable
-                  hitSlop={8}
-                  style={({ pressed }) => [styles.actionBtn, { backgroundColor: palette.cardMuted }, pressed && { opacity: 0.6 }]}
-                  onPress={onMoveDown}
-                >
-                  <Text style={[styles.arrowIconText, { color: palette.inkSecondary }]}>▼</Text>
-                </Pressable>
-              )}
-
-              {/* Tombol Jadikan Utama */}
-              {onSetDefault && account.is_default !== 1 && (
-                <Pressable
-                  hitSlop={8}
-                  style={({ pressed }) => [styles.actionBtn, { backgroundColor: palette.cardMuted }, pressed && { opacity: 0.6 }]}
-                  onPress={onSetDefault}
-                >
-                  <Text style={{ fontSize: 13 }}>⭐</Text>
-                </Pressable>
-              )}
-
-              {onEdit && (
-                <Pressable
-                  hitSlop={8}
-                  style={({ pressed }) => [styles.actionBtn, { backgroundColor: palette.cardMuted }, pressed && { opacity: 0.6 }]}
-                  onPress={onEdit}
-                >
-                  <EditActionIcon color={palette.primary} size={15} />
-                </Pressable>
-              )}
-              {onDelete && account.is_default !== 1 && (
-                <Pressable
-                  hitSlop={8}
-                  style={({ pressed }) => [styles.actionBtn, { backgroundColor: palette.cardMuted }, pressed && { opacity: 0.6 }]}
-                  onPress={onDelete}
-                >
-                  <Text style={styles.deleteIconText}>🗑️</Text>
-                </Pressable>
-              )}
-            </View>
+            <Text style={[styles.typeText, { color: palette.inkMuted }]}>{typeLabels[account.type]}</Text>
           </View>
-          <Text style={[styles.typeText, { color: palette.inkMuted }]}>{typeLabels[account.type]}</Text>
+        </Pressable>
+
+        <View style={styles.actionRow}>
+          {/* Tombol Pindah Naik/Turun */}
+          {onMoveUp && canMoveUp && (
+            <Pressable
+              hitSlop={8}
+              style={({ pressed }) => [styles.actionBtn, { backgroundColor: palette.cardMuted }, pressed && { opacity: 0.6 }]}
+              onPress={onMoveUp}
+            >
+              <Text style={[styles.arrowIconText, { color: palette.inkSecondary }]}>▲</Text>
+            </Pressable>
+          )}
+          {onMoveDown && canMoveDown && (
+            <Pressable
+              hitSlop={8}
+              style={({ pressed }) => [styles.actionBtn, { backgroundColor: palette.cardMuted }, pressed && { opacity: 0.6 }]}
+              onPress={onMoveDown}
+            >
+              <Text style={[styles.arrowIconText, { color: palette.inkSecondary }]}>▼</Text>
+            </Pressable>
+          )}
+
+          {/* Tombol Jadikan Utama */}
+          {onSetDefault && account.is_default !== 1 && (
+            <Pressable
+              hitSlop={8}
+              style={({ pressed }) => [styles.actionBtn, { backgroundColor: palette.cardMuted }, pressed && { opacity: 0.6 }]}
+              onPress={onSetDefault}
+            >
+              <Text style={{ fontSize: 13 }}>⭐</Text>
+            </Pressable>
+          )}
+
+          {onEdit && (
+            <Pressable
+              hitSlop={8}
+              style={({ pressed }) => [styles.actionBtn, { backgroundColor: palette.cardMuted }, pressed && { opacity: 0.6 }]}
+              onPress={onEdit}
+            >
+              <EditActionIcon color={palette.primary} size={15} />
+            </Pressable>
+          )}
+          {onDelete && account.is_default !== 1 && (
+            <Pressable
+              hitSlop={8}
+              style={({ pressed }) => [styles.actionBtn, { backgroundColor: palette.cardMuted }, pressed && { opacity: 0.6 }]}
+              onPress={onDelete}
+            >
+              <Text style={styles.deleteIconText}>🗑️</Text>
+            </Pressable>
+          )}
         </View>
       </View>
 
-      <View style={[styles.bottomRow, { borderTopColor: palette.borderSubtle }]}>
+      <Pressable
+        style={({ pressed }) => [
+          styles.bottomRow,
+          { borderTopColor: palette.borderSubtle },
+          pressed && { opacity: 0.75 },
+        ]}
+        onPress={onPress}
+        onLongPress={onLongPress}
+      >
         <View>
           <Text style={[styles.balanceLabel, { color: palette.inkMuted }]}>Saldo Saat Ini</Text>
           {minBal > 0 && (
@@ -151,8 +164,8 @@ export default function AccountCard({
         >
           {formatRupiah(account.calculated_balance)}
         </Text>
-      </View>
-    </Pressable>
+      </Pressable>
+    </View>
   );
 }
 
@@ -167,7 +180,19 @@ const styles = StyleSheet.create({
   topRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  headerPressable: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
     gap: 12,
+  },
+  actionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginLeft: 8,
   },
   iconBox: {
     width: 44,
