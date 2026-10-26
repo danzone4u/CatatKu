@@ -379,6 +379,65 @@ export default function GlobalSettingsScreen() {
               { borderTopWidth: 1, borderTopColor: palette.borderSubtle },
               pressed && { opacity: 0.7 },
             ]}
+            disabled={checkingUpdate}
+            onPress={async () => {
+              setCheckingUpdate(true);
+              try {
+                const res = await checkForAppUpdate();
+                if (res.error) {
+                  showModalAlert('Pemeriksaan Gagal', res.error, 'danger', '⚠️');
+                  return;
+                }
+
+                if (res.hasUpdate) {
+                  setConfirmModal({
+                    visible: true,
+                    type: 'info',
+                    icon: '🚀',
+                    title: `Pembaruan Tersedia (v${res.latestVersion})`,
+                    message: `Versi terbaru v${res.latestVersion} telah dirilis!\n\nCatatan Rilis:\n${res.releaseNotes || 'Peningkatan stabilitas aplikasi.'}`,
+                    cancelText: 'Nanti Saja',
+                    confirmText: 'Unduh Sekarang',
+                    onConfirm: () => {
+                      setConfirmModal((prev) => ({ ...prev, visible: false }));
+                      openDownloadPage(res.downloadUrl);
+                    },
+                  });
+                } else {
+                  showModalAlert(
+                    'Aplikasi Sudah Terbaru',
+                    `Anda telah menggunakan versi terbaru (v${res.currentVersion}). Tidak ada pembaruan saat ini.`,
+                    'success',
+                    '✨'
+                  );
+                }
+              } catch {
+                showModalAlert('Gagal', 'Terjadi kesalahan saat memeriksa pembaruan.', 'danger', '⚠️');
+              } finally {
+                setCheckingUpdate(false);
+              }
+            }}
+          >
+            <View style={styles.actionLeft}>
+              <Text style={styles.actionIcon}>🚀</Text>
+              <View>
+                <Text style={[styles.actionTitle, { color: palette.ink }]}>
+                  {checkingUpdate ? 'Memeriksa Pembaruan...' : 'Periksa Pembaruan Aplikasi'}
+                </Text>
+                <Text style={[styles.actionDesc, { color: palette.inkMuted }]}>
+                  Cek versi terbaru dari GitHub Releases
+                </Text>
+              </View>
+            </View>
+            <Text style={[styles.linkArrow, { color: palette.inkMuted }]}>›</Text>
+          </Pressable>
+
+          <Pressable
+            style={({ pressed }) => [
+              styles.actionRow,
+              { borderTopWidth: 1, borderTopColor: palette.borderSubtle },
+              pressed && { opacity: 0.7 },
+            ]}
             onPress={() => setShowAboutModal(true)}
           >
             <View style={styles.actionLeft}>

@@ -47,6 +47,7 @@ import {
   triggerLocalNotificationIfDue,
   type DueReminderItem,
 } from '../src/utils/notifications';
+import { checkForAppUpdate, openDownloadPage, type UpdateCheckResult } from '../src/utils/appUpdater';
 import OnboardingModal from '../src/components/OnboardingModal';
 import { ModernConfirmModal, type ModalType } from '../src/components/ModernConfirmModal';
 
@@ -104,6 +105,9 @@ export default function CashbookListScreen() {
 
   // Onboarding state
   const [showOnboarding, setShowOnboarding] = useState(false);
+
+  // App Update Notification modal state
+  const [availableUpdate, setAvailableUpdate] = useState<UpdateCheckResult | null>(null);
 
   const [modalAlert, setModalAlert] = useState<{
     visible: boolean;
@@ -188,13 +192,41 @@ export default function CashbookListScreen() {
     await setSetting(db, 'has_seen_onboarding_v1', '1');
   };
 
+  const checkStartupUpdate = useCallback(async () => {
+    try {
+      const lastCheckStr = await getSetting(db, 'last_update_check_time');
+      const now = Date.now();
+      // Jangan ganggu terus-menerus: cek otomatis maksimal 1 kali setiap 24 jam
+      if (lastCheckStr) {
+        const lastCheck = parseInt(lastCheckStr, 10);
+        if (!isNaN(lastCheck) && now - lastCheck < 24 * 60 * 60 * 1000) {
+          return;
+        }
+      }
+
+      const res = await checkForAppUpdate();
+      await setSetting(db, 'last_update_check_time', now.toString());
+
+      if (res.hasUpdate) {
+        // Cek apakah versi ini sebelumnya sudah ditolak/dilewati oleh pengguna
+        const dismissedVersion = await getSetting(db, 'dismissed_update_version');
+        if (dismissedVersion !== res.latestVersion) {
+          setAvailableUpdate(res);
+        }
+      }
+    } catch {
+      // Background check diam tanpa pesan error mengganggu
+    }
+  }, [db]);
+
   useFocusEffect(
     useCallback(() => {
       initTheme(db);
       checkOnboarding();
       loadData();
       loadShortcutSettings();
-    }, [db, initTheme, checkOnboarding, loadData, loadShortcutSettings])
+      checkStartupUpdate();
+    }, [db, initTheme, checkOnboarding, loadData, loadShortcutSettings, checkStartupUpdate])
   );
 
   const onRefresh = useCallback(async () => {
@@ -891,6 +923,28 @@ export default function CashbookListScreen() {
         confirmText="Mengerti"
         cancelText=""
         onConfirm={() => setModalAlert((prev) => ({ ...prev, visible: false }))}
+      />
+
+      {/* In-App Update Notification Modal */}
+      <ModernConfirmModal
+        visible={Boolean(availableUpdate)}
+        type="info"
+        icon="🚀"
+        title={`Pembaruan Tersedia (v${availableUpdate?.latestVersion})`}
+        message={`Versi baru CatatKu v${availableUpdate?.latestVersion} sudah tersedia!\n\nCatatan Rilis:\n${availableUpdate?.releaseNotes || 'Peningkatan performa dan pembaruan sistem.'}`}
+        confirmText="Unduh Pembaruan"
+        cancelText="Nanti Saja"
+        onConfirm={() => {
+          const url = availableUpdate?.downloadUrl;
+          setAvailableUpdate(null);
+          openDownloadPage(url);
+        }}
+        onCancel={async () => {
+          if (availableUpdate?.latestVersion) {
+            await setSetting(db, 'dismissed_update_version', availableUpdate.latestVersion);
+          }
+          setAvailableUpdate(null);
+        }}
       />
     </View>
   );
