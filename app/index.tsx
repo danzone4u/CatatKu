@@ -59,14 +59,14 @@ interface ShortcutItem {
 }
 
 const ALL_AVAILABLE_SHORTCUTS: ShortcutItem[] = [
-  { id: 'wallets', name: 'Dompet', route: '/wallets', iconType: 'wallet' },
-  { id: 'transfer', name: 'Transfer', route: '/transfer', iconType: 'transfer' },
-  { id: 'recurring', name: 'Rutin', route: '/recurring', iconType: 'recurring' },
-  { id: 'debts', name: 'Hutang', route: '/debts', iconType: 'debts' },
-  { id: 'budget', name: 'Budget', route: '/category-budgets', iconType: 'budget' },
-  { id: 'savings', name: 'Nabung', route: '/savings-goals', iconType: 'savings' },
-  { id: 'cashier', name: 'Kasir', route: '/cashier-calculator', iconType: 'cashier' },
-  { id: 'export', name: 'Laporan', route: '/(tabs)/reports', iconType: 'export' },
+  { id: 'wallets', name: 'Dompet & Akun', route: '/wallets', iconType: 'wallet' },
+  { id: 'transfer', name: 'Transfer Saldo', route: '/transfer', iconType: 'transfer' },
+  { id: 'recurring', name: 'Transaksi Berulang', route: '/recurring', iconType: 'recurring' },
+  { id: 'debts', name: 'Hutang & Piutang', route: '/debts', iconType: 'debts' },
+  { id: 'budget', name: 'Anggaran Kategori', route: '/category-budgets', iconType: 'budget' },
+  { id: 'savings', name: 'Target Tabungan', route: '/savings-goals', iconType: 'savings' },
+  { id: 'cashier', name: 'Kalkulator Kasir', route: '/cashier-calculator', iconType: 'cashier' },
+  { id: 'export', name: 'Laporan Keuangan', route: '/(tabs)/reports', iconType: 'export' },
 ];
 
 const DEFAULT_SHORTCUT_IDS = ['wallets', 'transfer', 'recurring', 'debts'];
@@ -80,7 +80,11 @@ export default function CashbookListScreen() {
   const { width } = useWindowDimensions();
   const isTablet = width >= 600;
   const contentWidth = isTablet ? Math.min(width, 840) : width;
-  const shortcutTileWidth = (contentWidth - 36 - 24) / 4;
+  const numColumns = isTablet ? 4 : 4;
+  const shortcutGap = isTablet ? 12 : 8;
+  const shortcutPaddingHorizontal = 36;
+  const shortcutTileWidth =
+    (contentWidth - shortcutPaddingHorizontal - shortcutGap * (numColumns - 1)) / numColumns;
   const { activeCashbook, setActiveCashbook } = useCashbookStore();
   const palette = useThemeStore((s) => s.palette);
   const isDarkMode = useThemeStore((s) => s.isDarkMode);
@@ -538,7 +542,7 @@ export default function CashbookListScreen() {
           </Pressable>
         </View>
 
-        <View style={styles.shortcutsGrid}>
+        <View style={[styles.shortcutsGrid, { gap: shortcutGap }]}>
           {displayedShortcuts.map((item) => (
             <Pressable
               key={item.id}
@@ -564,12 +568,18 @@ export default function CashbookListScreen() {
               >
                 {renderShortcutIcon(item.iconType, palette.primary)}
               </View>
-              <Text style={[styles.shortcutName, { color: palette.ink }]} numberOfLines={1} allowFontScaling={false}>
-                {item.name}
-              </Text>
+              <View style={styles.shortcutTextWrap}>
+                <Text
+                  style={[styles.shortcutName, { color: palette.ink }]}
+                  numberOfLines={2}
+                  ellipsizeMode="tail"
+                >
+                  {item.name}
+                </Text>
+              </View>
             </Pressable>
           ))}
-          {Array.from({ length: (4 - (displayedShortcuts.length % 4)) % 4 }).map((_, idx) => (
+          {Array.from({ length: (numColumns - (displayedShortcuts.length % numColumns)) % numColumns }).map((_, idx) => (
             <View key={`shortcut-spacer-${idx}`} style={{ width: shortcutTileWidth, height: 0 }} />
           ))}
         </View>
@@ -747,8 +757,14 @@ export default function CashbookListScreen() {
         animationType="fade"
         onRequestClose={() => setShowNotificationModal(false)}
       >
-        <View style={styles.modalOverlay}>
-          <View style={[styles.modalContent, { backgroundColor: palette.card }]}>
+        <View style={[styles.modalOverlay, isTablet && styles.modalOverlayTablet]}>
+          <View
+            style={[
+              styles.modalContent,
+              { backgroundColor: palette.card },
+              isTablet && styles.modalContentTablet,
+            ]}
+          >
             <View style={styles.modalHeader}>
               <View>
                 <Text style={[styles.modalTitle, { color: palette.ink }]}>Notifikasi & Jatuh Tempo</Text>
@@ -816,8 +832,14 @@ export default function CashbookListScreen() {
         animationType="slide"
         onRequestClose={() => setShowCustomizeModal(false)}
       >
-        <View style={styles.modalOverlay}>
-          <View style={[styles.modalContent, { backgroundColor: palette.card }]}>
+        <View style={[styles.modalOverlay, isTablet && styles.modalOverlayTablet]}>
+          <View
+            style={[
+              styles.modalContent,
+              { backgroundColor: palette.card },
+              isTablet && styles.modalContentTablet,
+            ]}
+          >
             <View style={styles.modalHeader}>
               <View>
                 <Text style={[styles.modalTitle, { color: palette.ink }]}>Kustomisasi Pintasan</Text>
@@ -1145,17 +1167,18 @@ const styles = StyleSheet.create({
   shortcutsGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    justifyContent: 'space-between',
+    justifyContent: 'flex-start',
     rowGap: 10,
     marginBottom: 14,
   },
   shortcutCard: {
     borderRadius: 16,
-    paddingVertical: 12,
-    paddingHorizontal: 2,
+    paddingVertical: 10,
+    paddingHorizontal: 4,
     justifyContent: 'center',
     alignItems: 'center',
     borderWidth: 1,
+    minHeight: 88,
   },
   shortcutCardPressed: {
     transform: [{ scale: 0.96 }],
@@ -1167,11 +1190,19 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     borderWidth: 1,
-    marginBottom: 4,
+    marginBottom: 6,
+  },
+  shortcutTextWrap: {
+    height: 28,
+    justifyContent: 'center',
+    alignItems: 'center',
+    width: '100%',
   },
   shortcutName: {
     fontFamily: FONTS.sansBold,
-    fontSize: 11,
+    fontSize: 10.5,
+    textAlign: 'center',
+    lineHeight: 13,
   },
   sectionHeader: {
     flexDirection: 'row',
@@ -1262,12 +1293,23 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0, 0, 0, 0.6)',
     justifyContent: 'flex-end',
   },
+  modalOverlayTablet: {
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 24,
+  },
   modalContent: {
     borderTopLeftRadius: 26,
     borderTopRightRadius: 26,
     paddingHorizontal: 20,
     paddingTop: 18,
     paddingBottom: 32,
+  },
+  modalContentTablet: {
+    borderRadius: 24,
+    maxWidth: 540,
+    width: '100%',
+    paddingBottom: 24,
   },
   modalHeader: {
     flexDirection: 'row',

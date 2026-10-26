@@ -140,7 +140,7 @@ export async function generateAndSharePdfReport(params: {
         }
 
         <div class="footer">
-          Dicetak otomatis oleh CatatKu App (Offline-First) • Dokumen ini sah sebagai rekapitulasi internal
+          Dicetak otomatis oleh Aplikasi CatatKu • Dokumen ini sah sebagai rekapitulasi internal keuangan
         </div>
       </body>
     </html>
