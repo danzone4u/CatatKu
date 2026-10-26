@@ -59,14 +59,14 @@ interface ShortcutItem {
 }
 
 const ALL_AVAILABLE_SHORTCUTS: ShortcutItem[] = [
-  { id: 'wallets', name: 'Dompet & Akun', route: '/wallets', iconType: 'wallet' },
-  { id: 'transfer', name: 'Transfer Saldo', route: '/transfer', iconType: 'transfer' },
-  { id: 'recurring', name: 'Transaksi Berulang', route: '/recurring', iconType: 'recurring' },
-  { id: 'debts', name: 'Hutang & Piutang', route: '/debts', iconType: 'debts' },
-  { id: 'budget', name: 'Anggaran Kategori', route: '/category-budgets', iconType: 'budget' },
-  { id: 'savings', name: 'Target Tabungan', route: '/savings-goals', iconType: 'savings' },
-  { id: 'cashier', name: 'Kalkulator Kasir', route: '/cashier-calculator', iconType: 'cashier' },
-  { id: 'export', name: 'Laporan Keuangan', route: '/(tabs)/reports', iconType: 'export' },
+  { id: 'wallets', name: 'Dompet', route: '/wallets', iconType: 'wallet' },
+  { id: 'transfer', name: 'Transfer', route: '/transfer', iconType: 'transfer' },
+  { id: 'recurring', name: 'Rutin', route: '/recurring', iconType: 'recurring' },
+  { id: 'debts', name: 'Hutang', route: '/debts', iconType: 'debts' },
+  { id: 'budget', name: 'Budget', route: '/category-budgets', iconType: 'budget' },
+  { id: 'savings', name: 'Nabung', route: '/savings-goals', iconType: 'savings' },
+  { id: 'cashier', name: 'Kasir', route: '/cashier-calculator', iconType: 'cashier' },
+  { id: 'export', name: 'Laporan', route: '/(tabs)/reports', iconType: 'export' },
 ];
 
 const DEFAULT_SHORTCUT_IDS = ['wallets', 'transfer', 'recurring', 'debts'];
