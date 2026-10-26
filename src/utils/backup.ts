@@ -67,8 +67,13 @@ export async function exportBackup(db: SQLiteDatabase): Promise<{ uri: string; f
 
   const jsonContent = JSON.stringify(payload, null, 2);
   const now = new Date();
-  const dateStr = now.toISOString().replace(/[:.]/g, '-').slice(0, 19);
-  const filename = `CatatKu-backup-${dateStr}.json`;
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const day = String(now.getDate()).padStart(2, '0');
+  const hours = String(now.getHours()).padStart(2, '0');
+  const mins = String(now.getMinutes()).padStart(2, '0');
+  const secs = String(now.getSeconds()).padStart(2, '0');
+  const filename = `CatatKu_Backup_${year}${month}${day}_${hours}${mins}${secs}.json`;
 
   const file = new File(Paths.document, filename);
   await file.write(jsonContent);
@@ -132,8 +137,13 @@ export async function exportBackupToLocalStorage(
 
   const jsonContent = JSON.stringify(payload, null, 2);
   const now = new Date();
-  const dateStr = now.toISOString().replace(/[:.]/g, '-').slice(0, 19);
-  const filename = `CatatKu-backup-${dateStr}.json`;
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const day = String(now.getDate()).padStart(2, '0');
+  const hours = String(now.getHours()).padStart(2, '0');
+  const mins = String(now.getMinutes()).padStart(2, '0');
+  const secs = String(now.getSeconds()).padStart(2, '0');
+  const filename = `CatatKu_Backup_${year}${month}${day}_${hours}${mins}${secs}.json`;
 
   if (Platform.OS === 'android' && StorageAccessFramework) {
     const permissions = await StorageAccessFramework.requestDirectoryPermissionsAsync();
@@ -430,9 +440,13 @@ export async function exportSingleCashbook(
   };
 
   const jsonContent = JSON.stringify(payload, null, 2);
-  const safeName = cashbook.name.replace(/[^a-zA-Z0-9]/g, '_').toLowerCase();
-  const dateStr = new Date().toISOString().slice(0, 10);
-  const filename = `kas-${safeName}-${dateStr}.bukukas.json`;
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const day = String(now.getDate()).padStart(2, '0');
+  const hours = String(now.getHours()).padStart(2, '0');
+  const mins = String(now.getMinutes()).padStart(2, '0');
+  const filename = `CatatKu_Backup_${year}${month}${day}_${hours}${mins}.json`;
 
   const file = new File(Paths.document, filename);
   await file.write(jsonContent);
@@ -463,7 +477,7 @@ export async function importSingleCashbook(
     throw new Error('File tidak memiliki data catatan tunggal');
   }
 
-  const { cashbook, categories, accounts, transactions, transfers, debts, debt_payments } = parsed.data;
+  const { cashbook, categories, accounts, transactions, transfers, debts } = parsed.data;
 
   let newBookId = 0;
   let txCount = 0;

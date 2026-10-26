@@ -11,6 +11,7 @@ import {
 import Svg, { Path, Circle, Defs, LinearGradient, Stop } from 'react-native-svg';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useFocusEffect, router } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   getMonthlySummary,
   getCategoryBreakdown,
@@ -66,8 +67,11 @@ const SETTINGS_KEY = 'cashbook_screen_shortcuts_v1';
 
 export default function DashboardScreen() {
   const db = useSQLiteContext();
+  const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
   const isTablet = width >= 600;
+  const contentWidth = isTablet ? Math.min(width, 840) : width;
+  const shortcutTileWidth = (contentWidth - 32 - 24) / 4;
   const { activeCashbook, setActiveCashbook } = useCashbookStore();
   const palette = useThemeStore((s) => s.palette);
   const isDarkMode = useThemeStore((s) => s.isDarkMode);
@@ -75,7 +79,7 @@ export default function DashboardScreen() {
   const [summary, setSummary] = useState({ total_income: 0, total_expense: 0, balance: 0 });
   const [debtSummary, setDebtSummary] = useState({ total_debt: 0, total_receivable: 0 });
   const [breakdown, setBreakdown] = useState<
-    Array<{ category_id: number; category_name: string; category_icon: string; total: number }>
+    { category_id: number; category_name: string; category_icon: string; total: number }[]
   >([]);
   const [accounts, setAccounts] = useState<AccountWithCalculatedBalance[]>([]);
   const [savingsGoals, setSavingsGoals] = useState<SavingsGoal[]>([]);
@@ -264,7 +268,7 @@ export default function DashboardScreen() {
         showsVerticalScrollIndicator={false}
       >
         {/* Top Header Card */}
-        <View style={styles.header}>
+        <View style={[styles.header, { paddingTop: Math.max(insets.top, 12) }]}>
           <Pressable
             style={({ pressed }) => [
               styles.backBtn,
@@ -275,7 +279,7 @@ export default function DashboardScreen() {
             onPress={handleGoBackToBooks}
           >
             <BackArrowIcon color={palette.primary} size={22} />
-            <Text style={[styles.backBtnText, { color: palette.primary }]}>Semua Catatan</Text>
+            <Text style={[styles.backBtnText, { color: palette.primary }]} allowFontScaling={false}>Semua Catatan</Text>
           </Pressable>
 
           <View style={styles.bookHeaderRow}>
@@ -283,22 +287,23 @@ export default function DashboardScreen() {
               <Text style={styles.bookIcon}>{activeCashbook?.icon ?? '📖'}</Text>
             </View>
             <View style={{ flex: 1 }}>
-              <Text style={[styles.bookTitle, { color: palette.ink }]} numberOfLines={1}>
+              <Text style={[styles.bookTitle, { color: palette.ink }]} numberOfLines={1} allowFontScaling={false}>
                 {activeCashbook?.name ?? 'Catatan'}
               </Text>
-              <Text style={[styles.periodText, { color: palette.inkMuted }]}>{getMonthName(month)} {year}</Text>
+              <Text style={[styles.periodText, { color: palette.inkMuted }]} allowFontScaling={false}>{getMonthName(month)} {year}</Text>
             </View>
           </View>
         </View>
 
         {/* Hero Balance Card */}
         <View style={[styles.heroCard, { backgroundColor: palette.card, borderColor: palette.border }]}>
-          <Text style={[styles.heroLabel, { color: palette.inkMuted }]}>Saldo Tersedia</Text>
+          <Text style={[styles.heroLabel, { color: palette.inkMuted }]} allowFontScaling={false}>Saldo Tersedia</Text>
           <Text
             style={[
               styles.heroAmount,
               { color: summary.balance >= 0 ? palette.ink : palette.expense },
             ]}
+            allowFontScaling={false}
           >
             {formatRupiah(summary.balance)}
           </Text>
@@ -308,8 +313,8 @@ export default function DashboardScreen() {
             <View style={styles.flowItem}>
               <View style={[styles.flowDot, { backgroundColor: palette.income }]} />
               <View>
-                <Text style={[styles.flowLabel, { color: palette.inkMuted }]}>Pemasukan</Text>
-                <Text style={[styles.flowIncome, { color: palette.income }]}>+{formatRupiah(summary.total_income)}</Text>
+                <Text style={[styles.flowLabel, { color: palette.inkMuted }]} allowFontScaling={false}>Pemasukan</Text>
+                <Text style={[styles.flowIncome, { color: palette.income }]} allowFontScaling={false}>+{formatRupiah(summary.total_income)}</Text>
               </View>
             </View>
 
@@ -318,8 +323,8 @@ export default function DashboardScreen() {
             <View style={styles.flowItem}>
               <View style={[styles.flowDot, { backgroundColor: palette.expense }]} />
               <View>
-                <Text style={[styles.flowLabel, { color: palette.inkMuted }]}>Pengeluaran</Text>
-                <Text style={[styles.flowExpense, { color: palette.expense }]}>-{formatRupiah(summary.total_expense)}</Text>
+                <Text style={[styles.flowLabel, { color: palette.inkMuted }]} allowFontScaling={false}>Pengeluaran</Text>
+                <Text style={[styles.flowExpense, { color: palette.expense }]} allowFontScaling={false}>-{formatRupiah(summary.total_expense)}</Text>
               </View>
             </View>
           </View>
@@ -434,7 +439,11 @@ export default function DashboardScreen() {
               key={item.id}
               style={({ pressed }) => [
                 styles.toolTile,
-                { backgroundColor: palette.card, borderColor: palette.border },
+                {
+                  width: shortcutTileWidth,
+                  backgroundColor: palette.card,
+                  borderColor: palette.border,
+                },
                 pressed && [styles.toolPressed, { backgroundColor: isDarkMode ? '#182735' : '#FAFCFB' }],
               ]}
               onPress={() => router.push(item.route as any)}
@@ -450,8 +459,13 @@ export default function DashboardScreen() {
               >
                 {renderShortcutIcon(item.iconType, palette.primary)}
               </View>
-              <Text style={[styles.toolText, { color: palette.ink }]} numberOfLines={1}>{item.name}</Text>
+              <Text style={[styles.toolText, { color: palette.ink }]} numberOfLines={1} allowFontScaling={false}>
+                {item.name}
+              </Text>
             </Pressable>
+          ))}
+          {Array.from({ length: (4 - (activeShortcuts.length % 4)) % 4 }).map((_, idx) => (
+            <View key={`tool-spacer-${idx}`} style={{ width: shortcutTileWidth, height: 0 }} />
           ))}
         </View>
 
@@ -586,11 +600,6 @@ export default function DashboardScreen() {
             })
           )}
         </View>
-
-        {/* Footer Copyright Terkunci di Bawah */}
-        <View style={styles.footerWrap}>
-          <Text style={[styles.footerText, { color: palette.inkMuted }]}>© 2026 CatatKu</Text>
-        </View>
       </ScrollView>
 
       {/* Floating Action Button (FAB) + Catat Transaksi */}
@@ -717,8 +726,8 @@ export default function DashboardScreen() {
 const styles = StyleSheet.create({
   screenWrapper: { flex: 1, backgroundColor: PALETTE.canvas },
   container: { flex: 1 },
-  content: { paddingHorizontal: 16, paddingTop: 10, paddingBottom: 88 },
-  header: { marginBottom: 14, paddingTop: 40 },
+  content: { paddingHorizontal: 16, paddingTop: 4, paddingBottom: 88 },
+  header: { marginBottom: 8 },
   backBtn: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -771,8 +780,8 @@ const styles = StyleSheet.create({
   heroCard: {
     backgroundColor: PALETTE.card,
     borderRadius: 20,
-    padding: 18,
-    marginBottom: 14,
+    padding: 14,
+    marginBottom: 12,
     borderWidth: 1,
     borderColor: PALETTE.border,
     ...PALETTE.shadowLight,
@@ -901,13 +910,11 @@ const styles = StyleSheet.create({
   toolsGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    justifyContent: 'flex-start',
-    columnGap: 8,
+    justifyContent: 'space-between',
     rowGap: 10,
-    marginBottom: 16,
+    marginBottom: 12,
   },
   toolTile: {
-    width: '23%',
     borderRadius: 16,
     paddingVertical: 12,
     paddingHorizontal: 2,
@@ -1192,14 +1199,5 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '700',
     color: '#FFFFFF',
-  },
-  footerWrap: {
-    alignItems: 'center',
-    paddingVertical: 24,
-    marginTop: 'auto',
-  },
-  footerText: {
-    fontFamily: FONTS.sansRegular,
-    fontSize: 12,
   },
 });

@@ -177,19 +177,9 @@ export async function getCashbookById(db: SQLiteDatabase, id: number): Promise<C
 
 export async function getCashbooksWithStats(db: SQLiteDatabase): Promise<CashbookStats[]> {
   try {
-    let books = await getCashbooks(db, true);
+    const books = await getCashbooks(db, true);
     if (!books || books.length === 0) {
-      try {
-        await db.runAsync("INSERT OR IGNORE INTO cashbooks (id, name, icon, color, is_default, type) VALUES (1, 'Kas Pribadi', '👤', '#1C1917', 1, 'personal')");
-        await db.runAsync(`
-          INSERT OR IGNORE INTO accounts (cashbook_id, name, type, balance, icon, color, is_default)
-          VALUES
-            (1, 'Uang Tunai', 'cash', 0, '💵', '#16A34A', 1),
-            (1, 'Rekening Bank', 'bank', 0, '🏦', '#2563EB', 0),
-            (1, 'E-Wallet', 'ewallet', 0, '📱', '#9333EA', 0);
-        `);
-        books = await getCashbooks(db, true);
-      } catch {}
+      return [];
     }
 
     const result: CashbookStats[] = [];
@@ -347,6 +337,47 @@ export async function deleteCashbook(db: SQLiteDatabase, id: number): Promise<vo
   await db.runAsync('DELETE FROM category_budgets WHERE cashbook_id = ?', id);
   await db.runAsync('DELETE FROM savings_goals WHERE cashbook_id = ?', id);
   await db.runAsync('DELETE FROM cashbooks WHERE id = ?', id);
+}
+
+// ─── Reset Catatan & Data ───
+export async function resetCashbookTransactions(db: SQLiteDatabase, cashbookId: number): Promise<void> {
+  await db.withTransactionAsync(async () => {
+    // 1. Hapus transaksi & mutasi transfer
+    await db.runAsync('DELETE FROM transactions WHERE cashbook_id = ?', cashbookId);
+    await db.runAsync('DELETE FROM transfers WHERE cashbook_id = ?', cashbookId);
+
+    // 2. Hapus hutang & cicilan hutang
+    const debtIds = await db.getAllAsync<{ id: number }>('SELECT id FROM debts WHERE cashbook_id = ?', cashbookId);
+    for (const d of debtIds) {
+      await db.runAsync('DELETE FROM debt_payments WHERE debt_id = ?', d.id);
+    }
+    await db.runAsync('DELETE FROM debts WHERE cashbook_id = ?', cashbookId);
+
+    // 3. Reset saldo seluruh dompet/rekening menjadi 0
+    await db.runAsync('UPDATE accounts SET balance = 0 WHERE cashbook_id = ?', cashbookId);
+
+    // 4. Hapus target tabungan & anggaran di catatan ini
+    await db.runAsync('DELETE FROM category_budgets WHERE cashbook_id = ?', cashbookId);
+    await db.runAsync('UPDATE savings_goals SET current_amount = 0, is_achieved = 0 WHERE cashbook_id = ?', cashbookId);
+  });
+}
+
+export async function resetAllAppData(db: SQLiteDatabase): Promise<void> {
+  await db.withTransactionAsync(async () => {
+    // Bersihkan semua tabel transaksi dan entitas
+    await db.runAsync('DELETE FROM debt_payments');
+    await db.runAsync('DELETE FROM debts');
+    await db.runAsync('DELETE FROM transactions');
+    await db.runAsync('DELETE FROM transfers');
+    await db.runAsync('DELETE FROM category_budgets');
+    await db.runAsync('DELETE FROM savings_goals');
+    await db.runAsync('DELETE FROM recurring_rules');
+    try {
+      await db.runAsync('DELETE FROM monthly_bills');
+    } catch {}
+    await db.runAsync('DELETE FROM accounts');
+    await db.runAsync('DELETE FROM cashbooks');
+  });
 }
 
 // ─── Accounts (Dompet / Rekening) ───

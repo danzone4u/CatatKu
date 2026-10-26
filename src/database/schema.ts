@@ -152,7 +152,7 @@ export async function migrateDbIfNeeded(db: SQLiteDatabase) {
         ('Tabungan', '🎯', 1),
         ('Lainnya', '📦', 1);
     `);
-    currentDbVersion = 3;
+    currentDbVersion = DATABASE_VERSION;
   }
 
   if (currentDbVersion === 1) {
@@ -265,16 +265,19 @@ export async function migrateDbIfNeeded(db: SQLiteDatabase) {
       await db.execAsync('ALTER TABLE debts ADD COLUMN account_id INTEGER DEFAULT 1;');
     } catch {}
 
-    // Populate default accounts untuk setiap cashbook yang sudah ada
+    // Populate default accounts untuk setiap cashbook yang sudah ada (jika buku belum punya akun)
     const existingBooks = await db.getAllAsync<{ id: number }>('SELECT id FROM cashbooks');
     for (const b of existingBooks) {
-      await db.runAsync(`
-        INSERT OR IGNORE INTO accounts (cashbook_id, name, type, balance, icon, color, is_default)
-        VALUES
-          (?, 'Uang Tunai', 'cash', 0, '💵', '#16A34A', 1),
-          (?, 'Rekening Bank', 'bank', 0, '🏦', '#2563EB', 0),
-          (?, 'E-Wallet', 'ewallet', 0, '📱', '#9333EA', 0);
-      `, b.id, b.id, b.id);
+      const accCount = await db.getFirstAsync<{ count: number }>('SELECT COUNT(*) as count FROM accounts WHERE cashbook_id = ?', b.id);
+      if ((accCount?.count ?? 0) === 0) {
+        await db.runAsync(`
+          INSERT INTO accounts (cashbook_id, name, type, balance, icon, color, is_default)
+          VALUES
+            (?, 'Uang Tunai', 'cash', 0, '💵', '#16A34A', 1),
+            (?, 'Rekening Bank', 'bank', 0, '🏦', '#2563EB', 0),
+            (?, 'E-Wallet', 'ewallet', 0, '📱', '#9333EA', 0);
+        `, b.id, b.id, b.id);
+      }
     }
   }
 

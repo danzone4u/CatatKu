@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { View, Text, StyleSheet, Animated, Image, ActivityIndicator, Pressable } from 'react-native';
 import { PALETTE, FONTS } from '../constants/theme';
 
@@ -7,10 +7,20 @@ interface Props {
 }
 
 export default function AnimatedSplashScreen({ onFinish }: Props) {
-  const scaleAnim = useRef(new Animated.Value(0.9)).current;
-  const opacityAnim = useRef(new Animated.Value(0)).current;
-  const pulseAnim = useRef(new Animated.Value(1)).current;
-  const containerOpacity = useRef(new Animated.Value(1)).current;
+  const [scaleAnim] = useState(() => new Animated.Value(0.9));
+  const [opacityAnim] = useState(() => new Animated.Value(0));
+  const [pulseAnim] = useState(() => new Animated.Value(1));
+  const [containerOpacity] = useState(() => new Animated.Value(1));
+
+  const dismiss = useCallback(() => {
+    Animated.timing(containerOpacity, {
+      toValue: 0,
+      duration: 250,
+      useNativeDriver: true,
+    }).start(() => {
+      onFinish?.();
+    });
+  }, [containerOpacity, onFinish]);
 
   useEffect(() => {
     // 1. Fade in & scale up tagline image
@@ -50,17 +60,7 @@ export default function AnimatedSplashScreen({ onFinish }: Props) {
     }, 1200);
 
     return () => clearTimeout(timer);
-  }, []);
-
-  function dismiss() {
-    Animated.timing(containerOpacity, {
-      toValue: 0,
-      duration: 250,
-      useNativeDriver: true,
-    }).start(() => {
-      onFinish?.();
-    });
-  }
+  }, [dismiss, opacityAnim, pulseAnim, scaleAnim]);
 
   return (
     <Pressable style={styles.pressableWrap} onPress={dismiss}>
@@ -92,8 +92,12 @@ export default function AnimatedSplashScreen({ onFinish }: Props) {
 
         {/* Copyright Footer */}
         <Animated.View style={[styles.copyrightWrap, { opacity: opacityAnim }]}>
-          <Text style={styles.copyrightText}>© Dani Abdul Wahid</Text>
-          <Text style={styles.copyrightSub}>CatatKu • Versi 1.1.0 Offline-First</Text>
+          <Text style={styles.copyrightText} allowFontScaling={false}>
+            © 2026 CatatKu by Dani Abdul Wahid
+          </Text>
+          <Text style={styles.copyrightSub} allowFontScaling={false}>
+            Versi 1.1.0
+          </Text>
         </Animated.View>
       </Animated.View>
     </Pressable>
@@ -107,10 +111,13 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    zIndex: 9999,
+    zIndex: 99999,
+    elevation: 99999,
   },
   container: {
     flex: 1,
+    width: '100%',
+    height: '100%',
     backgroundColor: '#FFFFFF',
     justifyContent: 'space-between',
     alignItems: 'center',
@@ -162,15 +169,16 @@ const styles = StyleSheet.create({
     gap: 2,
   },
   copyrightText: {
-    fontFamily: FONTS.sansMedium,
-    fontSize: 12,
-    fontWeight: '700',
+    fontFamily: FONTS.sansRegular,
+    fontSize: 9.5,
     color: PALETTE.inkSecondary,
-    letterSpacing: 0.3,
+    letterSpacing: 0.2,
+    opacity: 0.65,
   },
   copyrightSub: {
     fontFamily: FONTS.sansRegular,
-    fontSize: 10,
+    fontSize: 8.5,
     color: PALETTE.inkMuted,
+    opacity: 0.6,
   },
 });

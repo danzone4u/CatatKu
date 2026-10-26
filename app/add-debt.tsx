@@ -6,6 +6,8 @@ import {
   Pressable,
   ScrollView,
   useWindowDimensions,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useState, useCallback } from 'react';
@@ -171,14 +173,21 @@ export default function AddDebtScreen() {
         </View>
       </View>
 
-      <ScrollView
-        contentContainerStyle={[
-          styles.content,
-          isTablet && { maxWidth: 720, width: '100%', alignSelf: 'center' },
-          { flexGrow: 1 },
-        ]}
-        showsVerticalScrollIndicator={false}
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
+        <ScrollView
+          contentContainerStyle={[
+            styles.content,
+            { paddingBottom: 120 },
+            isTablet && { maxWidth: 720, width: '100%', alignSelf: 'center' },
+            { flexGrow: 1 },
+          ]}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+          automaticallyAdjustKeyboardInsets={true}
+        >
         {/* Pilih Catatan */}
         {!editingDebtId && (
           <>
@@ -338,12 +347,8 @@ export default function AddDebtScreen() {
             {editingDebtId ? 'Perbarui Catatan Hutang/Piutang' : 'Simpan Catatan Hutang/Piutang'}
           </Text>
         </Pressable>
-
-        {/* Footer Copyright */}
-        <View style={styles.footerWrap}>
-          <Text style={[styles.footerText, { color: palette.inkMuted }]}>© 2026 CatatKu</Text>
-        </View>
       </ScrollView>
+    </KeyboardAvoidingView>
 
       {/* DatePicker Visual Modal */}
       <DatePickerModal

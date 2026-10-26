@@ -44,11 +44,11 @@ export default function TransactionCard(props: Props) {
 
       <View style={styles.details}>
         <View style={styles.titleRow}>
-          <Text style={[styles.categoryName, { color: palette.ink }]} numberOfLines={1}>
+          <Text style={[styles.categoryName, { color: palette.ink }]} numberOfLines={1} allowFontScaling={false}>
             {props.category_name}
           </Text>
           <View style={styles.rightActionRow}>
-            <Text style={[styles.amount, { color: isIncome ? palette.income : palette.expense }]}>
+            <Text style={[styles.amount, { color: isIncome ? palette.income : palette.expense }]} allowFontScaling={false}>
               {isIncome ? '+' : '-'}{formatRupiah(props.amount)}
             </Text>
             {props.onDelete && (
@@ -69,7 +69,7 @@ export default function TransactionCard(props: Props) {
 
         {/* Waktu Transaksi Detik */}
         <View style={styles.timeRow}>
-          <Text style={[styles.dateText, { color: palette.inkSecondary }]}>
+          <Text style={[styles.dateText, { color: palette.inkSecondary }]} allowFontScaling={false}>
             🕒 {formatDate(props.date)}
           </Text>
         </View>
@@ -78,19 +78,19 @@ export default function TransactionCard(props: Props) {
           <View style={styles.metaLeft}>
             {props.account_name && (
               <View style={[styles.accountBadge, { backgroundColor: palette.cardMuted }]}>
-                <Text style={[styles.accountText, { color: palette.inkSecondary }]}>
+                <Text style={[styles.accountText, { color: palette.inkSecondary }]} allowFontScaling={false}>
                   {props.account_icon ?? '💳'} {props.account_name}
                 </Text>
               </View>
             )}
             {props.receipt_image_uri && (
               <View style={[styles.receiptBadge, { backgroundColor: isDarkMode ? '#451A03' : '#FEF3C7' }]}>
-                <Text style={[styles.receiptBadgeText, { color: palette.debt }]}>🧾 Struk</Text>
+                <Text style={[styles.receiptBadgeText, { color: palette.debt }]} allowFontScaling={false}>🧾 Struk</Text>
               </View>
             )}
           </View>
           {props.note ? (
-            <Text style={[styles.note, { color: palette.inkMuted }]} numberOfLines={1}>
+            <Text style={[styles.note, { color: palette.inkMuted }]} numberOfLines={1} allowFontScaling={false}>
               {props.note}
             </Text>
           ) : null}

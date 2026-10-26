@@ -36,7 +36,7 @@ export default function TransactionsScreen() {
   // Zoom Receipt Modal
   const [viewingReceiptUri, setViewingReceiptUri] = useState<string | null>(null);
 
-  const calculateDateRange = () => {
+  const calculateDateRange = useCallback(() => {
     if (period === 'all') return { start: undefined, end: undefined };
 
     const y = currentDate.getFullYear();
@@ -80,7 +80,7 @@ export default function TransactionsScreen() {
       start: `${y}-01-01 00:00:00`,
       end: `${y}-12-31 23:59:59`,
     };
-  };
+  }, [currentDate, period]);
 
   const shiftPeriod = (step: number) => {
     const next = new Date(currentDate);
@@ -131,7 +131,7 @@ export default function TransactionsScreen() {
       maxAmount: maxVal > 0 ? maxVal : undefined,
     });
     setTransactions(data);
-  }, [db, cashbookId, filter, search, period, currentDate, minAmount, maxAmount]);
+  }, [calculateDateRange, db, cashbookId, filter, search, minAmount, maxAmount]);
 
   useFocusEffect(
     useCallback(() => {

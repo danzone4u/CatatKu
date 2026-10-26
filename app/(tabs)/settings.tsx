@@ -19,6 +19,7 @@ import {
   deleteCategory,
   toggleArchiveCashbook,
   deleteCashbook,
+  resetCashbookTransactions,
   type Category,
 } from '../../src/database/queries';
 import {
@@ -36,7 +37,6 @@ export default function SettingsScreen() {
   const isTablet = width >= 600;
   const { palette, isDarkMode } = useThemeStore();
   const { activeCashbook, setActiveCashbook } = useCashbookStore();
-  const cashbookId = activeCashbook?.id ?? 1;
 
   const [categories, setCategories] = useState<Category[]>([]);
   const [newCatName, setNewCatName] = useState('');
@@ -52,6 +52,8 @@ export default function SettingsScreen() {
     message: string;
     cancelText?: string;
     confirmText?: string;
+    requiredKeyword?: string;
+    onCancel?: () => void;
     onConfirm: () => Promise<void> | void;
   }>({
     visible: false,
@@ -173,6 +175,32 @@ export default function SettingsScreen() {
         await deleteCashbook(db, activeCashbook.id);
         setActiveCashbook(null);
         router.replace('/');
+      },
+    });
+  }
+
+  function handleResetTransactions() {
+    if (!activeCashbook) return;
+
+    setConfirmModal({
+      visible: true,
+      type: 'danger',
+      icon: '🧹',
+      title: 'Reset Catatan Ini',
+      message: `PERINGATAN: Seluruh riwayat transaksi, transfer, dan hutang pada catatan "${activeCashbook.name}" akan dihapus permanen. Saldo dompet akan kembali menjadi 0.`,
+      cancelText: 'Batal',
+      confirmText: 'Reset Catatan Ini',
+      requiredKeyword: 'reset',
+      onConfirm: async () => {
+        closeConfirmModal();
+        try {
+          await resetCashbookTransactions(db, activeCashbook.id);
+          showAlert('Berhasil', `Seluruh transaksi pada catatan "${activeCashbook.name}" telah direset menjadi kosong.`, 'success', '✨', () => {
+            router.replace('/(tabs)');
+          });
+        } catch {
+          showAlert('Gagal', 'Terjadi kesalahan saat mereset catatan.', 'danger');
+        }
       },
     });
   }
@@ -386,6 +414,26 @@ export default function SettingsScreen() {
       <View style={[styles.card, { backgroundColor: palette.card, borderColor: palette.border }]}>
         <Pressable
           style={({ pressed }) => [styles.actionRow, pressed && { opacity: 0.7 }]}
+          onPress={handleResetTransactions}
+        >
+          <View style={styles.actionLeft}>
+            <Text style={styles.actionIcon}>🧹</Text>
+            <View>
+              <Text style={[styles.actionTitle, { color: palette.expense }]}>Reset Catatan ini</Text>
+              <Text style={[styles.actionDesc, { color: palette.inkMuted }]}>
+                Kosongkan seluruh riwayat pemasukan, pengeluaran, dan saldo
+              </Text>
+            </View>
+          </View>
+          <Text style={[styles.linkArrow, { color: palette.expense }]}>›</Text>
+        </Pressable>
+
+        <Pressable
+          style={({ pressed }) => [
+            styles.actionRow,
+            { borderTopWidth: 1, borderTopColor: palette.borderSubtle },
+            pressed && { opacity: 0.7 },
+          ]}
           onPress={handleToggleArchive}
         >
           <View style={styles.actionLeft}>
@@ -425,11 +473,6 @@ export default function SettingsScreen() {
         )}
       </View>
 
-      {/* Footer Copyright Terkunci di Paling Bawah */}
-      <View style={styles.footerWrap}>
-        <Text style={[styles.footerText, { color: palette.inkMuted }]}>© 2026 CatatKu</Text>
-      </View>
-
       {/* Universal Confirm Modal */}
       <ModernConfirmModal
         visible={confirmModal.visible}
@@ -439,6 +482,7 @@ export default function SettingsScreen() {
         message={confirmModal.message}
         cancelText={confirmModal.cancelText}
         confirmText={confirmModal.confirmText}
+        requiredKeyword={confirmModal.requiredKeyword}
         onCancel={closeConfirmModal}
         onConfirm={confirmModal.onConfirm}
       />

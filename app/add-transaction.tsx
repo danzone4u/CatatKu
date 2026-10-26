@@ -7,9 +7,11 @@ import {
   ScrollView,
   Image,
   Modal,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { useSQLiteContext } from 'expo-sqlite';
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useCallback } from 'react';
 import { router, Stack, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import * as ImagePicker from 'expo-image-picker';
@@ -246,7 +248,16 @@ export default function AddTransactionScreen() {
           headerTitleStyle: { fontFamily: FONTS.serifTitle, fontWeight: '700' },
         }}
       />
-      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      >
+        <ScrollView
+          contentContainerStyle={[styles.content, { paddingBottom: 120 }]}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+          automaticallyAdjustKeyboardInsets={true}
+        >
         {/* Banner Catatan Aktif */}
         <View
           style={[
@@ -534,6 +545,7 @@ export default function AddTransactionScreen() {
           <Text style={styles.saveBtnText}>{isEdit ? 'Simpan Perubahan' : 'Simpan Transaksi'}</Text>
         </Pressable>
       </ScrollView>
+    </KeyboardAvoidingView>
 
       {/* Modern Bottom Sheet Modal: Lampirkan Struk / Nota */}
       <Modal

@@ -18,6 +18,7 @@ import { useThemeStore } from '../src/stores/useThemeStore';
 import {
   getSetting,
   setSetting,
+  resetAllAppData,
 } from '../src/database/queries';
 import {
   exportBackup,
@@ -59,6 +60,7 @@ export default function GlobalSettingsScreen() {
     message: string;
     cancelText?: string;
     confirmText?: string;
+    requiredKeyword?: string;
     onCancel?: () => void;
     onConfirm: () => Promise<void> | void;
   }>({
@@ -390,9 +392,46 @@ export default function GlobalSettingsScreen() {
           </Pressable>
         </View>
 
-        {/* Footer Copyright Terkunci di Paling Bawah */}
-        <View style={styles.footerWrap}>
-          <Text style={[styles.footerText, { color: palette.inkMuted }]}>© 2026 CatatKu</Text>
+        {/* Seksi 5: Zona Bahaya / Reset Total */}
+        <Text style={[styles.sectionTitle, { color: palette.expense }]}>ZONA BAHAYA</Text>
+        <View style={[styles.card, { backgroundColor: palette.card, borderColor: palette.border }]}>
+          <Pressable
+            style={({ pressed }) => [styles.actionRow, pressed && { opacity: 0.7 }]}
+            onPress={() => {
+              setConfirmModal({
+                visible: true,
+                type: 'danger',
+                icon: '⚠️',
+                title: 'Reset Aplikasi',
+                message: 'PERINGATAN: Seluruh catatan, transaksi, dompet, hutang, dan data aplikasi akan dihapus permanen ke kondisi awal.',
+                cancelText: 'Batal',
+                confirmText: 'Reset Aplikasi',
+                requiredKeyword: 'reset',
+                onConfirm: async () => {
+                  closeConfirmModal();
+                  try {
+                    await resetAllAppData(db);
+                    showModalAlert('Berhasil', 'Seluruh data aplikasi telah direset bersih seperti baru.', 'success', '✨', () => {
+                      router.replace('/');
+                    });
+                  } catch {
+                    showModalAlert('Gagal', 'Terjadi kesalahan saat mereset database aplikasi.', 'danger');
+                  }
+                },
+              });
+            }}
+          >
+            <View style={styles.actionLeft}>
+              <Text style={styles.actionIcon}>🧨</Text>
+              <View>
+                <Text style={[styles.actionTitle, { color: palette.expense }]}>Reset Aplikasi</Text>
+                <Text style={[styles.actionDesc, { color: palette.inkMuted }]}>
+                  Hapus seluruh catatan dan kembalikan ke kondisi baru install
+                </Text>
+              </View>
+            </View>
+            <Text style={[styles.linkArrow, { color: palette.expense }]}>›</Text>
+          </Pressable>
         </View>
       </ScrollView>
 
@@ -593,6 +632,7 @@ export default function GlobalSettingsScreen() {
         message={confirmModal.message}
         cancelText={confirmModal.cancelText}
         confirmText={confirmModal.confirmText}
+        requiredKeyword={confirmModal.requiredKeyword}
         onCancel={closeConfirmModal}
         onConfirm={confirmModal.onConfirm}
       />

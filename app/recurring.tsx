@@ -97,13 +97,7 @@ export default function RecurringScreen() {
     });
   };
 
-  useFocusEffect(
-    useCallback(() => {
-      loadData();
-    }, [cashbookId])
-  );
-
-  async function loadData() {
+  const loadData = useCallback(async () => {
     await processDueRecurringTransactions(db);
 
     const [ruleList, cats, accs] = await Promise.all([
@@ -116,7 +110,13 @@ export default function RecurringScreen() {
     setAccounts(accs);
     if (cats.length > 0 && !categoryId) setCategoryId(cats[0].id);
     if (accs.length > 0 && !accountId) setAccountId(accs[0].id);
-  }
+  }, [db, cashbookId, categoryId, accountId]);
+
+  useFocusEffect(
+    useCallback(() => {
+      loadData();
+    }, [loadData])
+  );
 
   async function handleToggle(id: number) {
     await toggleRecurringRule(db, id);
@@ -441,11 +441,6 @@ export default function RecurringScreen() {
             subtitle="Jadwalkan pengeluaran atau pemasukan berulang agar pencatatan keuangan rapi & otomatis"
             isDark={isDarkMode}
           />
-        }
-        ListFooterComponent={
-          <View style={styles.footerWrap}>
-            <Text style={[styles.footerText, { color: palette.inkMuted }]}>© 2026 CatatKu</Text>
-          </View>
         }
       />
 

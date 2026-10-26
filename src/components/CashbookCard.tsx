@@ -58,36 +58,37 @@ export default function CashbookCard({ cashbook, onPress, onLongPress, isDark = 
             </View>
             <View style={{ flex: 1 }}>
               <View style={styles.nameBadgeRow}>
-                <Text style={[styles.title, { color: activePalette.ink }]} numberOfLines={1}>{cashbook.name}</Text>
+                <Text style={[styles.title, { color: activePalette.ink }]} numberOfLines={1} allowFontScaling={false}>{cashbook.name}</Text>
                 <View style={[styles.typeBadge, { backgroundColor: typeConfig.bg }]}>
-                  <Text style={[styles.typeBadgeText, { color: typeConfig.color }]}>
+                  <Text style={[styles.typeBadgeText, { color: typeConfig.color }]} allowFontScaling={false}>
                     {typeConfig.label}
                   </Text>
                 </View>
                 {isArchived && (
                   <View style={[styles.archiveBadge, { backgroundColor: isDark ? '#334155' : '#E2E8F0' }]}>
-                    <Text style={[styles.archiveText, { color: isDark ? '#94A3B8' : activePalette.inkSecondary }]}>Arsip</Text>
+                    <Text style={[styles.archiveText, { color: isDark ? '#94A3B8' : activePalette.inkSecondary }]} allowFontScaling={false}>Arsip</Text>
                   </View>
                 )}
               </View>
-              <Text style={[styles.metaText, { color: activePalette.inkMuted }]}>{cashbook.transaction_count} transaksi dicatat</Text>
+              <Text style={[styles.metaText, { color: activePalette.inkMuted }]} allowFontScaling={false}>{cashbook.transaction_count} transaksi dicatat</Text>
             </View>
           </View>
           <View style={[styles.chevronWrap, { backgroundColor: activePalette.cardMuted }]}>
-            <Text style={[styles.chevron, { color: activePalette.inkMuted }]}>›</Text>
+            <Text style={[styles.chevron, { color: activePalette.inkMuted }]} allowFontScaling={false}>›</Text>
           </View>
         </View>
 
         {/* Balance & Stats Row */}
         <View style={[styles.balanceContainer, { borderTopColor: activePalette.borderSubtle }]}>
           <View style={{ flex: 1 }}>
-            <Text style={[styles.balanceLabel, { color: activePalette.inkMuted }]}>Saldo Tersedia</Text>
+            <Text style={[styles.balanceLabel, { color: activePalette.inkMuted }]} allowFontScaling={false}>Saldo Tersedia</Text>
             <Text
               style={[
                 styles.balanceAmount,
                 { color: cashbook.balance >= 0 ? activePalette.ink : activePalette.expense },
               ]}
               numberOfLines={1}
+              allowFontScaling={false}
             >
               {formatRupiah(cashbook.balance)}
             </Text>
@@ -95,12 +96,12 @@ export default function CashbookCard({ cashbook, onPress, onLongPress, isDark = 
 
           <View style={styles.inOutStats}>
             <View style={[styles.statChipIncome, { backgroundColor: isDark ? '#064E3B40' : '#F0FDF4', borderColor: isDark ? '#065F46' : '#DCFCE7' }]}>
-              <Text style={styles.statArrow}>↗</Text>
-              <Text style={[styles.statIncomeText, { color: activePalette.income }]}>+{formatRupiah(cashbook.total_income)}</Text>
+              <Text style={styles.statArrow} allowFontScaling={false}>↗</Text>
+              <Text style={[styles.statIncomeText, { color: activePalette.income }]} allowFontScaling={false}>+{formatRupiah(cashbook.total_income)}</Text>
             </View>
             <View style={[styles.statChipExpense, { backgroundColor: isDark ? '#4C051940' : '#FFF1F2', borderColor: isDark ? '#881337' : '#FFE4E6' }]}>
-              <Text style={styles.statArrow}>↘</Text>
-              <Text style={[styles.statExpenseText, { color: activePalette.expense }]}>-{formatRupiah(cashbook.total_expense)}</Text>
+              <Text style={styles.statArrow} allowFontScaling={false}>↘</Text>
+              <Text style={[styles.statExpenseText, { color: activePalette.expense }]} allowFontScaling={false}>-{formatRupiah(cashbook.total_expense)}</Text>
             </View>
           </View>
         </View>
@@ -108,9 +109,9 @@ export default function CashbookCard({ cashbook, onPress, onLongPress, isDark = 
         {/* Mini Grafik Bar Rasio Arus Catatan */}
         <View style={[styles.chartContainer, { borderTopColor: activePalette.borderSubtle }]}>
           <View style={styles.chartHeader}>
-            <Text style={[styles.chartTitle, { color: activePalette.inkMuted }]}>Rasio Arus Keuangan</Text>
-            <Text style={[styles.chartRatioText, { color: activePalette.inkSecondary }]}>
-              Masuk <Text style={{ color: activePalette.income, fontWeight: '700' }}>{incomePercent}%</Text> • Keluar <Text style={{ color: activePalette.expense, fontWeight: '700' }}>{expensePercent}%</Text>
+            <Text style={[styles.chartTitle, { color: activePalette.inkMuted }]} allowFontScaling={false}>Rasio Arus Keuangan</Text>
+            <Text style={[styles.chartRatioText, { color: activePalette.inkSecondary }]} allowFontScaling={false}>
+              Masuk <Text style={{ color: activePalette.income, fontWeight: '700' }} allowFontScaling={false}>{incomePercent}%</Text> • Keluar <Text style={{ color: activePalette.expense, fontWeight: '700' }} allowFontScaling={false}>{expensePercent}%</Text>
             </Text>
           </View>
           <View style={[styles.chartBarTrack, { backgroundColor: isDark ? '#23384B' : '#E2E8F0' }]}>
@@ -212,10 +213,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: 7,
     paddingVertical: 2,
     borderRadius: 6,
+    minHeight: 18,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   typeBadgeText: {
     fontFamily: FONTS.sansBold,
-    fontSize: 9,
+    fontSize: 10,
     fontWeight: '800',
     letterSpacing: 0.3,
   },
@@ -224,10 +228,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: 6,
     paddingVertical: 2,
     borderRadius: 6,
+    minHeight: 18,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   archiveText: {
     fontFamily: FONTS.sansBold,
-    fontSize: 9,
+    fontSize: 10,
     color: PALETTE.inkSecondary,
   },
   metaText: {

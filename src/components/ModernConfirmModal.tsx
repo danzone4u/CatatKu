@@ -1,5 +1,5 @@
-import React from 'react';
-import { View, Text, StyleSheet, Modal, Pressable } from 'react-native';
+import React, { useState } from 'react';
+import { View, Text, StyleSheet, Modal, Pressable, TextInput } from 'react-native';
 import { PALETTE, FONTS } from '../constants/theme';
 import { useThemeStore } from '../stores/useThemeStore';
 
@@ -13,6 +13,7 @@ interface ModernConfirmModalProps {
   message: string;
   cancelText?: string;
   confirmText?: string;
+  requiredKeyword?: string;
   onCancel?: () => void;
   onConfirm: () => void;
 }
@@ -25,10 +26,24 @@ export function ModernConfirmModal({
   message,
   cancelText = 'Batal',
   confirmText = 'Lanjutkan',
+  requiredKeyword,
   onCancel,
   onConfirm,
 }: ModernConfirmModalProps) {
   const { palette, isDarkMode } = useThemeStore();
+  const [typedText, setTypedText] = useState('');
+  const [prevVisible, setPrevVisible] = useState(visible);
+
+  if (prevVisible !== visible) {
+    setPrevVisible(visible);
+    if (visible) {
+      setTypedText('');
+    }
+  }
+
+  const isConfirmDisabled = requiredKeyword
+    ? typedText.trim().toLowerCase() !== requiredKeyword.trim().toLowerCase()
+    : false;
 
   const getThemeColors = () => {
     switch (type) {
@@ -82,6 +97,30 @@ export function ModernConfirmModal({
           <Text style={[styles.title, { color: palette.ink }]}>{title}</Text>
           <Text style={[styles.message, { color: palette.inkMuted }]}>{message}</Text>
 
+          {requiredKeyword ? (
+            <View style={styles.inputWrapper}>
+              <Text style={[styles.inputHint, { color: palette.inkSecondary }]}>
+                Ketik <Text style={{ fontFamily: FONTS.sansBold, fontWeight: '700', color: colors.confirmBtnBg }}>{requiredKeyword}</Text> untuk mengonfirmasi:
+              </Text>
+              <TextInput
+                style={[
+                  styles.textInput,
+                  {
+                    backgroundColor: isDarkMode ? 'rgba(255, 255, 255, 0.06)' : 'rgba(0, 0, 0, 0.04)',
+                    color: palette.ink,
+                    borderColor: isConfirmDisabled ? palette.borderSubtle : colors.confirmBtnBg,
+                  },
+                ]}
+                placeholder={`Ketik "${requiredKeyword}"`}
+                placeholderTextColor={palette.inkMuted}
+                value={typedText}
+                onChangeText={setTypedText}
+                autoCapitalize="none"
+                autoCorrect={false}
+              />
+            </View>
+          ) : null}
+
           <View style={styles.buttonRow}>
             {cancelText ? (
               <Pressable
@@ -98,10 +137,12 @@ export function ModernConfirmModal({
             ) : null}
 
             <Pressable
+              disabled={isConfirmDisabled}
               style={({ pressed }) => [
                 styles.btn,
                 { backgroundColor: colors.confirmBtnBg },
-                pressed && { opacity: 0.85, transform: [{ scale: 0.98 }] },
+                isConfirmDisabled && { opacity: 0.35 },
+                !isConfirmDisabled && pressed && { opacity: 0.85, transform: [{ scale: 0.98 }] },
               ]}
               onPress={onConfirm}
             >
@@ -154,7 +195,27 @@ const styles = StyleSheet.create({
     fontSize: 13,
     textAlign: 'center',
     lineHeight: 19,
-    marginBottom: 22,
+    marginBottom: 18,
+  },
+  inputWrapper: {
+    width: '100%',
+    marginBottom: 18,
+  },
+  inputHint: {
+    fontFamily: FONTS.sansRegular,
+    fontSize: 12,
+    textAlign: 'center',
+    marginBottom: 8,
+  },
+  textInput: {
+    width: '100%',
+    height: 42,
+    borderWidth: 1.5,
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    fontFamily: FONTS.sansBold,
+    fontSize: 14,
+    textAlign: 'center',
   },
   buttonRow: {
     flexDirection: 'row',

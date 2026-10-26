@@ -15,6 +15,7 @@ import { File, Paths } from 'expo-file-system';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useFocusEffect } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useThemeStore } from '../../src/stores/useThemeStore';
 import { useCashbookStore } from '../../src/stores/useCashbookStore';
 import { getSavingsGoals, type SavingsGoal } from '../../src/database/queries';
@@ -44,6 +45,7 @@ const CHART_HEIGHT = 160;
 
 export default function ReportsScreen() {
   const db = useSQLiteContext();
+  const insets = useSafeAreaInsets();
   const palette = useThemeStore((s) => s.palette);
   const isDarkMode = useThemeStore((s) => s.isDarkMode);
   const activeCashbook = useCashbookStore((s) => s.activeCashbook);
@@ -57,6 +59,8 @@ export default function ReportsScreen() {
   const [income, setIncome] = useState(0);
   const [expense, setExpense] = useState(0);
   const [categoryBreakdown, setCategoryBreakdown] = useState<CategoryReport[]>([]);
+  const [incomeCategoryBreakdown, setIncomeCategoryBreakdown] = useState<CategoryReport[]>([]);
+  const [categoryTab, setCategoryTab] = useState<'expense' | 'income'>('expense');
   const [trendData, setTrendData] = useState<TrendPoint[]>([]);
   const [savingsGoals, setSavingsGoals] = useState<SavingsGoal[]>([]);
 
@@ -123,42 +127,49 @@ export default function ReportsScreen() {
     setCurrentDate(next);
   };
 
+  const getDateRange = useCallback((filterPeriod = period, baseDate = currentDate) => {
+    let startDateStr = '';
+    let endDateStr = '';
+    const y = baseDate.getFullYear();
+    const m = baseDate.getMonth();
+
+    if (filterPeriod === 'daily') {
+      const dStr = String(baseDate.getDate()).padStart(2, '0');
+      const mStr = String(m + 1).padStart(2, '0');
+      startDateStr = `${y}-${mStr}-${dStr} 00:00:00`;
+      endDateStr = `${y}-${mStr}-${dStr} 23:59:59`;
+    } else if (filterPeriod === 'weekly') {
+      const start = new Date(baseDate);
+      start.setDate(start.getDate() - start.getDay());
+      const end = new Date(start);
+      end.setDate(start.getDate() + 6);
+
+      const sy = start.getFullYear();
+      const sm = String(start.getMonth() + 1).padStart(2, '0');
+      const sd = String(start.getDate()).padStart(2, '0');
+      const ey = end.getFullYear();
+      const em = String(end.getMonth() + 1).padStart(2, '0');
+      const ed = String(end.getDate()).padStart(2, '0');
+
+      startDateStr = `${sy}-${sm}-${sd} 00:00:00`;
+      endDateStr = `${ey}-${em}-${ed} 23:59:59`;
+    } else if (filterPeriod === 'monthly') {
+      const mStr = String(m + 1).padStart(2, '0');
+      const lastDay = new Date(y, m + 1, 0).getDate();
+      startDateStr = `${y}-${mStr}-01 00:00:00`;
+      endDateStr = `${y}-${mStr}-${String(lastDay).padStart(2, '0')} 23:59:59`;
+    } else if (filterPeriod === 'yearly') {
+      startDateStr = `${y}-01-01 00:00:00`;
+      endDateStr = `${y}-12-31 23:59:59`;
+    }
+    return { startDateStr, endDateStr };
+  }, [period, currentDate]);
+
   const loadReportData = useCallback(async () => {
     try {
-      let startDateStr = '';
-      let endDateStr = '';
-
+      const { startDateStr, endDateStr } = getDateRange();
       const y = currentDate.getFullYear();
       const m = currentDate.getMonth();
-
-      if (period === 'daily') {
-        const dStr = String(currentDate.getDate()).padStart(2, '0');
-        const mStr = String(m + 1).padStart(2, '0');
-        startDateStr = `${y}-${mStr}-${dStr} 00:00:00`;
-        endDateStr = `${y}-${mStr}-${dStr} 23:59:59`;
-      } else if (period === 'weekly') {
-        const start = new Date(currentDate);
-        start.setDate(start.getDate() - start.getDay());
-        const end = new Date(start);
-        end.setDate(start.getDate() + 6);
-
-        const sy = start.getFullYear();
-        const sm = String(start.getMonth() + 1).padStart(2, '0');
-        const sd = String(start.getDate()).padStart(2, '0');
-        const ey = end.getFullYear();
-        const em = String(end.getMonth() + 1).padStart(2, '0');
-        const ed = String(end.getDate()).padStart(2, '0');
-
-        startDateStr = `${sy}-${sm}-${sd} 00:00:00`;
-        endDateStr = `${ey}-${em}-${ed} 23:59:59`;
-      } else if (period === 'monthly') {
-        const mStr = String(m + 1).padStart(2, '0');
-        startDateStr = `${y}-${mStr}-01 00:00:00`;
-        endDateStr = `${y}-${mStr}-31 23:59:59`;
-      } else if (period === 'yearly') {
-        startDateStr = `${y}-01-01 00:00:00`;
-        endDateStr = `${y}-12-31 23:59:59`;
-      }
 
       // Query total income & expense
       const totals = await db.getAllAsync<{ type: 'income' | 'expense'; total: number }>(`
@@ -192,6 +203,22 @@ export default function ReportsScreen() {
         percentage: exp > 0 ? (r.total_amount / exp) * 100 : 0,
       }));
       setCategoryBreakdown(items);
+
+      // Query breakdown pemasukan per kategori
+      const incomeCatRows = await db.getAllAsync<{ category_name: string; category_icon: string; total_amount: number }>(`
+        SELECT c.name as category_name, c.icon as category_icon, SUM(t.amount) as total_amount
+        FROM transactions t
+        JOIN categories c ON t.category_id = c.id
+        WHERE t.cashbook_id = ? AND t.type = 'income' AND t.date >= ? AND t.date <= ?
+        GROUP BY t.category_id
+        ORDER BY total_amount DESC
+      `, cashbookId, startDateStr, endDateStr);
+
+      const incomeItems: CategoryReport[] = incomeCatRows.map((r) => ({
+        ...r,
+        percentage: inc > 0 ? (r.total_amount / inc) * 100 : 0,
+      }));
+      setIncomeCategoryBreakdown(incomeItems);
 
       // Query Points untuk Chart Arus Keuangan
       if (period === 'daily') {
@@ -304,7 +331,7 @@ export default function ReportsScreen() {
     } catch (e) {
       console.warn('loadReportData error:', e);
     }
-  }, [db, cashbookId, period, currentDate]);
+  }, [db, cashbookId, period, currentDate, getDateRange]);
 
   useFocusEffect(
     useCallback(() => {
@@ -324,18 +351,73 @@ export default function ReportsScreen() {
       const isAvailable = await Sharing.isAvailableAsync();
       const periodTitle = getPeriodLabel();
       const bookName = activeCashbook ? activeCashbook.name : 'Catatan Finansial';
+      const { startDateStr, endDateStr } = getDateRange();
 
-      const breakdownRows = categoryBreakdown.map((item) => `
+      // Query seluruh transaksi di periode terkait (Pemasukan & Pengeluaran)
+      const periodTransactions = await db.getAllAsync<{
+        id: number;
+        type: 'income' | 'expense';
+        amount: number;
+        date: string;
+        note: string;
+        category_name: string;
+        category_icon: string;
+        account_name: string | null;
+      }>(`
+        SELECT t.id, t.type, t.amount, t.date, t.note, c.name as category_name, c.icon as category_icon, a.name as account_name
+        FROM transactions t
+        JOIN categories c ON t.category_id = c.id
+        LEFT JOIN accounts a ON t.account_id = a.id
+        WHERE t.cashbook_id = ? AND t.date >= ? AND t.date <= ?
+        ORDER BY t.date DESC
+      `, cashbookId, startDateStr, endDateStr);
+
+      const incomeBreakdownRows = incomeCategoryBreakdown.map((item) => `
         <tr>
-          <td style="padding: 10px; border-bottom: 1px solid #E2E8F0;">
-            <span style="font-size: 16px; margin-right: 6px;">${item.category_icon}</span>
+          <td style="padding: 9px 10px; border-bottom: 1px solid #E2E8F0;">
+            <span style="font-size: 15px; margin-right: 6px;">${item.category_icon}</span>
             <strong>${item.category_name}</strong>
           </td>
-          <td style="padding: 10px; border-bottom: 1px solid #E2E8F0; text-align: right; color: #E11D48; font-weight: 700;">
-            ${formatRupiah(item.total_amount)}
+          <td style="padding: 9px 10px; border-bottom: 1px solid #E2E8F0; text-align: right; color: #059669; font-weight: 700;">
+            +${formatRupiah(item.total_amount)}
           </td>
-          <td style="padding: 10px; border-bottom: 1px solid #E2E8F0; text-align: right; color: #64748B;">
+          <td style="padding: 9px 10px; border-bottom: 1px solid #E2E8F0; text-align: right; color: #64748B;">
             ${item.percentage.toFixed(1)}%
+          </td>
+        </tr>
+      `).join('');
+
+      const expenseBreakdownRows = categoryBreakdown.map((item) => `
+        <tr>
+          <td style="padding: 9px 10px; border-bottom: 1px solid #E2E8F0;">
+            <span style="font-size: 15px; margin-right: 6px;">${item.category_icon}</span>
+            <strong>${item.category_name}</strong>
+          </td>
+          <td style="padding: 9px 10px; border-bottom: 1px solid #E2E8F0; text-align: right; color: #E11D48; font-weight: 700;">
+            -${formatRupiah(item.total_amount)}
+          </td>
+          <td style="padding: 9px 10px; border-bottom: 1px solid #E2E8F0; text-align: right; color: #64748B;">
+            ${item.percentage.toFixed(1)}%
+          </td>
+        </tr>
+      `).join('');
+
+      const transactionRows = periodTransactions.map((t, idx) => `
+        <tr>
+          <td style="text-align: center; padding: 8px 6px; border-bottom: 1px solid #E2E8F0; color: #64748B;">${idx + 1}</td>
+          <td style="padding: 8px 10px; border-bottom: 1px solid #E2E8F0;">${formatDate(t.date)}</td>
+          <td style="padding: 8px 10px; border-bottom: 1px solid #E2E8F0;">
+            <span style="padding: 2px 7px; border-radius: 4px; font-weight: 800; font-size: 10px; background: ${t.type === 'income' ? '#DCFCE7' : '#FEE2E2'}; color: ${t.type === 'income' ? '#16A34A' : '#DC2626'};">
+              ${t.type === 'income' ? 'Masuk' : 'Keluar'}
+            </span>
+          </td>
+          <td style="padding: 8px 10px; border-bottom: 1px solid #E2E8F0;">
+            <span>${t.category_icon}</span> ${t.category_name}
+          </td>
+          <td style="padding: 8px 10px; border-bottom: 1px solid #E2E8F0; color: #475569;">${t.account_name ?? 'Dompet'}</td>
+          <td style="padding: 8px 10px; border-bottom: 1px solid #E2E8F0; color: #64748B;">${t.note || '-'}</td>
+          <td style="padding: 8px 10px; border-bottom: 1px solid #E2E8F0; text-align: right; font-weight: 800; color: ${t.type === 'income' ? '#059669' : '#DC2626'};">
+            ${t.type === 'income' ? '+' : '-'}${formatRupiah(t.amount)}
           </td>
         </tr>
       `).join('');
@@ -347,19 +429,20 @@ export default function ReportsScreen() {
           <meta charset="utf-8">
           <title>Laporan Keuangan - CatatKu</title>
           <style>
-            body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: #0F172A; padding: 24px; line-height: 1.5; }
-            .header { border-bottom: 2px solid #0F766E; padding-bottom: 16px; margin-bottom: 24px; }
-            .logo { font-size: 26px; font-weight: 900; color: #0F766E; letter-spacing: -0.5px; }
-            .subtitle { font-size: 14px; color: #64748B; margin-top: 4px; }
-            .card-grid { display: flex; gap: 16px; margin-bottom: 24px; }
-            .card { flex: 1; padding: 16px; border-radius: 12px; border: 1px solid #E2E8F0; background: #F8FAFC; }
-            .card-title { font-size: 12px; font-weight: 700; text-transform: uppercase; margin-bottom: 6px; }
-            .income-val { font-size: 20px; font-weight: 800; color: #059669; }
-            .expense-val { font-size: 20px; font-weight: 800; color: #E11D48; }
-            .net-val { font-size: 20px; font-weight: 800; color: #0F766E; }
-            table { width: 100%; border-collapse: collapse; margin-top: 12px; font-size: 14px; }
-            th { text-align: left; padding: 10px; background: #0F766E; color: #FFFFFF; font-weight: 700; border-radius: 4px; }
-            .footer { margin-top: 36px; padding-top: 16px; border-top: 1px solid #E2E8F0; font-size: 12px; color: #94A3B8; text-align: center; }
+            body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: #0F172A; padding: 24px; line-height: 1.5; font-size: 12px; }
+            .header { border-bottom: 2px solid #0F766E; padding-bottom: 14px; margin-bottom: 20px; }
+            .logo { font-size: 24px; font-weight: 900; color: #0F766E; letter-spacing: -0.5px; }
+            .subtitle { font-size: 13px; color: #64748B; margin-top: 3px; }
+            .card-grid { display: flex; gap: 12px; margin-bottom: 22px; }
+            .card { flex: 1; padding: 12px 14px; border-radius: 10px; border: 1px solid #E2E8F0; background: #F8FAFC; }
+            .card-title { font-size: 11px; font-weight: 700; text-transform: uppercase; margin-bottom: 4px; }
+            .income-val { font-size: 18px; font-weight: 800; color: #059669; }
+            .expense-val { font-size: 18px; font-weight: 800; color: #E11D48; }
+            .net-val { font-size: 18px; font-weight: 800; color: #0F766E; }
+            table { width: 100%; border-collapse: collapse; margin-top: 8px; margin-bottom: 20px; font-size: 12px; }
+            th { text-align: left; padding: 8px 10px; background: #0F766E; color: #FFFFFF; font-weight: 700; border-radius: 2px; font-size: 11px; }
+            .section-head { font-size: 14px; font-weight: 800; margin-top: 20px; margin-bottom: 4px; }
+            .footer { margin-top: 28px; padding-top: 14px; border-top: 1px solid #E2E8F0; font-size: 11px; color: #94A3B8; text-align: center; }
           </style>
         </head>
         <body>
@@ -370,30 +453,62 @@ export default function ReportsScreen() {
 
           <div class="card-grid">
             <div class="card">
-              <div class="card-title" style="color: #059669;">Pemasukan</div>
-              <div class="income-val">${formatRupiah(income)}</div>
+              <div class="card-title" style="color: #059669;">Total Pemasukan</div>
+              <div class="income-val">+${formatRupiah(income)}</div>
             </div>
             <div class="card">
-              <div class="card-title" style="color: #E11D48;">Pengeluaran</div>
-              <div class="expense-val">${formatRupiah(expense)}</div>
+              <div class="card-title" style="color: #E11D48;">Total Pengeluaran</div>
+              <div class="expense-val">-${formatRupiah(expense)}</div>
             </div>
             <div class="card">
               <div class="card-title" style="color: #0F766E;">Selisih Bersih</div>
-              <div class="net-val">${formatRupiah(income - expense)}</div>
+              <div class="net-val">${netSavings >= 0 ? '+' : ''}${formatRupiah(netSavings)}</div>
             </div>
           </div>
 
-          <h3 style="margin-top: 24px; color: #0F172A;">Rincian Pengeluaran per Kategori</h3>
+          <div class="section-head" style="color: #059669;">Rincian Kategori Pemasukan</div>
           <table>
             <thead>
-              <tr>
+              <tr style="background: #059669;">
                 <th>Kategori</th>
-                <th style="text-align: right;">Total Pengeluaran</th>
+                <th style="text-align: right;">Total Masuk</th>
                 <th style="text-align: right;">Porsi</th>
               </tr>
             </thead>
             <tbody>
-              ${breakdownRows || '<tr><td colspan="3" style="text-align:center; padding: 20px; color:#94A3B8;">Tidak ada data transaksi</td></tr>'}
+              ${incomeBreakdownRows || '<tr><td colspan="3" style="text-align:center; padding: 12px; color:#94A3B8;">Tidak ada data pemasukan pada periode ini</td></tr>'}
+            </tbody>
+          </table>
+
+          <div class="section-head" style="color: #E11D48;">Rincian Kategori Pengeluaran</div>
+          <table>
+            <thead>
+              <tr style="background: #E11D48;">
+                <th>Kategori</th>
+                <th style="text-align: right;">Total Keluar</th>
+                <th style="text-align: right;">Porsi</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${expenseBreakdownRows || '<tr><td colspan="3" style="text-align:center; padding: 12px; color:#94A3B8;">Tidak ada data pengeluaran pada periode ini</td></tr>'}
+            </tbody>
+          </table>
+
+          <div class="section-head" style="color: #0F172A;">Daftar Transaksi Lengkap (${periodTransactions.length})</div>
+          <table>
+            <thead>
+              <tr>
+                <th style="width: 24px; text-align: center;">#</th>
+                <th>Tanggal</th>
+                <th>Tipe</th>
+                <th>Kategori</th>
+                <th>Dompet</th>
+                <th>Catatan</th>
+                <th style="text-align: right;">Jumlah</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${transactionRows || '<tr><td colspan="7" style="text-align:center; padding: 14px; color:#94A3B8;">Tidak ada transaksi dicatat pada periode ini</td></tr>'}
             </tbody>
           </table>
 
@@ -478,7 +593,7 @@ export default function ReportsScreen() {
       <StatusBar style={isDarkMode ? 'light' : 'dark'} />
 
       {/* Header */}
-      <View style={[styles.header, { backgroundColor: palette.card, borderBottomColor: palette.border }]}>
+      <View style={[styles.header, { backgroundColor: palette.card, borderBottomColor: palette.border, paddingTop: Math.max(insets.top, 12) + 6 }]}>
         <View style={styles.headerTopRow}>
           <View>
             <Text style={[styles.headerTitle, { color: palette.ink }]}>Laporan Finansial</Text>
@@ -738,25 +853,81 @@ export default function ReportsScreen() {
           </View>
         )}
 
-        {/* Breakdown Pengeluaran Kategori */}
+        {/* Breakdown Kategori */}
         <View style={[styles.summaryCard, { backgroundColor: palette.card, borderColor: palette.border }]}>
-          <Text style={[styles.sectionTitle, { color: palette.ink }]}>Pengeluaran per Kategori</Text>
-
-          {categoryBreakdown.length === 0 ? (
-            <View style={styles.emptyState}>
-              <Text style={styles.emptyIcon}>📊</Text>
-              <Text style={[styles.emptyText, { color: palette.inkMuted }]}>
-                Belum ada transaksi pengeluaran pada periode ini
-              </Text>
+          <View style={styles.catSectionHeaderRow}>
+            <Text style={[styles.sectionTitle, { color: palette.ink, marginBottom: 0 }]}>
+              {categoryTab === 'expense' ? 'Pengeluaran' : 'Pemasukan'} per Kategori
+            </Text>
+            <View style={styles.catTabToggleWrap}>
+              <Pressable
+                style={[
+                  styles.catTabBtn,
+                  categoryTab === 'expense' && {
+                    backgroundColor: isDarkMode ? '#4C0519' : '#FFE4E6',
+                    borderColor: palette.expense,
+                  },
+                ]}
+                onPress={() => setCategoryTab('expense')}
+              >
+                <Text
+                  style={[
+                    styles.catTabBtnText,
+                    { color: palette.inkMuted },
+                    categoryTab === 'expense' && { color: palette.expense, fontWeight: '800' },
+                  ]}
+                  allowFontScaling={false}
+                >
+                  Keluar
+                </Text>
+              </Pressable>
+              <Pressable
+                style={[
+                  styles.catTabBtn,
+                  categoryTab === 'income' && {
+                    backgroundColor: isDarkMode ? '#064E3B' : '#DCFCE7',
+                    borderColor: palette.income,
+                  },
+                ]}
+                onPress={() => setCategoryTab('income')}
+              >
+                <Text
+                  style={[
+                    styles.catTabBtnText,
+                    { color: palette.inkMuted },
+                    categoryTab === 'income' && { color: palette.income, fontWeight: '800' },
+                  ]}
+                  allowFontScaling={false}
+                >
+                  Masuk
+                </Text>
+              </Pressable>
             </View>
-          ) : (
-            categoryBreakdown.map((item, idx) => (
+          </View>
+
+          {(() => {
+            const currentItems = categoryTab === 'expense' ? categoryBreakdown : incomeCategoryBreakdown;
+            const barColor = categoryTab === 'expense' ? palette.expense : palette.income;
+            const typeLabel = categoryTab === 'expense' ? 'pengeluaran' : 'pemasukan';
+
+            if (currentItems.length === 0) {
+              return (
+                <View style={styles.emptyState}>
+                  <Text style={styles.emptyIcon}>📊</Text>
+                  <Text style={[styles.emptyText, { color: palette.inkMuted }]}>
+                    Belum ada transaksi {typeLabel} pada periode ini
+                  </Text>
+                </View>
+              );
+            }
+
+            return currentItems.map((item, idx) => (
               <View key={idx} style={styles.categoryRow}>
                 <View style={styles.categoryHeader}>
                   <Text style={styles.catIconText}>{item.category_icon}</Text>
-                  <Text style={[styles.catName, { color: palette.ink }]}>{item.category_name}</Text>
-                  <Text style={[styles.catAmount, { color: palette.ink }]}>
-                    {formatRupiah(item.total_amount)}
+                  <Text style={[styles.catName, { color: palette.ink }]} allowFontScaling={false}>{item.category_name}</Text>
+                  <Text style={[styles.catAmount, { color: barColor }]} allowFontScaling={false}>
+                    {categoryTab === 'income' ? '+' : '-'}{formatRupiah(item.total_amount)}
                   </Text>
                 </View>
 
@@ -765,16 +936,16 @@ export default function ReportsScreen() {
                   <View
                     style={[
                       styles.progressBarFill,
-                      { width: `${Math.min(item.percentage, 100)}%`, backgroundColor: palette.primary },
+                      { width: `${Math.min(item.percentage, 100)}%`, backgroundColor: barColor },
                     ]}
                   />
                 </View>
                 <Text style={[styles.percentageText, { color: palette.inkMuted }]}>
-                  {item.percentage.toFixed(1)}% dari total pengeluaran
+                  {item.percentage.toFixed(1)}% dari total {typeLabel}
                 </Text>
               </View>
-            ))
-          )}
+            ));
+          })()}
         </View>
       </ScrollView>
 
@@ -798,7 +969,6 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   header: {
-    paddingTop: 50,
     paddingHorizontal: 20,
     paddingBottom: 16,
     borderBottomWidth: 1,
@@ -1030,5 +1200,29 @@ const styles = StyleSheet.create({
     fontSize: 10,
     marginTop: 3,
     textAlign: 'right',
+  },
+  catSectionHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 14,
+  },
+  catTabToggleWrap: {
+    flexDirection: 'row',
+    gap: 6,
+    backgroundColor: 'rgba(0,0,0,0.04)',
+    padding: 3,
+    borderRadius: 10,
+  },
+  catTabBtn: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: 'transparent',
+  },
+  catTabBtnText: {
+    fontFamily: FONTS.sansBold,
+    fontSize: 10,
   },
 });

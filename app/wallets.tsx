@@ -289,11 +289,6 @@ export default function WalletsScreen() {
             />
           ))
         )}
-
-        {/* Footer Copyright Terkunci di Bawah */}
-        <View style={styles.footerWrap}>
-          <Text style={[styles.footerText, { color: palette.inkMuted }]}>© 2026 CatatKu</Text>
-        </View>
       </ScrollView>
 
       {/* Modal Tambah / Edit Dompet */}

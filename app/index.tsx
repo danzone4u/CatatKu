@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useMemo, useCallback } from 'react';
 import {
   View,
   Text,
@@ -11,8 +11,9 @@ import {
   useWindowDimensions,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
-import { router, useFocusEffect } from 'expo-router';
+import { router, useFocusEffect, Stack } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import CashbookCard from '../src/components/CashbookCard';
 import {
   getCashbooksWithStats,
@@ -74,13 +75,15 @@ type BookTypeFilter = 'all' | 'personal' | 'organization' | 'business';
 
 export default function CashbookListScreen() {
   const db = useSQLiteContext();
+  const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
   const isTablet = width >= 600;
+  const contentWidth = isTablet ? Math.min(width, 840) : width;
+  const shortcutTileWidth = (contentWidth - 36 - 24) / 4;
   const { activeCashbook, setActiveCashbook } = useCashbookStore();
   const palette = useThemeStore((s) => s.palette);
   const isDarkMode = useThemeStore((s) => s.isDarkMode);
   const initTheme = useThemeStore((s) => s.initTheme);
-  const toggleTheme = useThemeStore((s) => s.toggleTheme);
 
   const [cashbooks, setCashbooks] = useState<CashbookStats[]>([]);
   const [showArchived, setShowArchived] = useState(false);
@@ -338,10 +341,12 @@ export default function CashbookListScreen() {
   return (
     <View style={[styles.container, { backgroundColor: palette.canvas }]}>
       <StatusBar style={isDarkMode ? 'light' : 'dark'} />
+      <Stack.Screen options={{ headerShown: false, headerBackVisible: false, headerLeft: () => null }} />
       <ScrollView
         style={styles.scroll}
         contentContainerStyle={[
           styles.content,
+          { paddingTop: Math.max(insets.top, 16) + 6 },
           isTablet && { maxWidth: 840, width: '100%', alignSelf: 'center' },
           { flexGrow: 1 },
         ]}
@@ -421,12 +426,12 @@ export default function CashbookListScreen() {
               disabled={nonArchivedBooks.length <= 1}
             >
               <Text style={styles.heroSelectorIcon}>{currentHeroBook?.icon ?? '📝'}</Text>
-              <Text style={styles.heroSelectorTitle} numberOfLines={1}>
+              <Text style={styles.heroSelectorTitle} numberOfLines={1} allowFontScaling={false}>
                 {currentHeroBook ? currentHeroBook.name : 'Belum Ada Catatan'}
               </Text>
               {nonArchivedBooks.length > 1 && (
                 <View style={styles.heroCycleChip}>
-                  <Text style={styles.heroCycleChipText}>Ganti ↻</Text>
+                  <Text style={styles.heroCycleChipText} allowFontScaling={false}>Ganti ↻</Text>
                 </View>
               )}
             </Pressable>
@@ -445,10 +450,10 @@ export default function CashbookListScreen() {
           </View>
 
           <View style={styles.heroBalanceWrap}>
-            <Text style={styles.heroBalanceLabel}>
+            <Text style={styles.heroBalanceLabel} allowFontScaling={false}>
               {currentHeroBook ? `Saldo • ${currentHeroBook.name}` : 'Saldo'}
             </Text>
-            <Text style={styles.heroBalanceAmount}>
+            <Text style={styles.heroBalanceAmount} allowFontScaling={false}>
               {hideBalance
                 ? '••••••••••'
                 : formatRupiah(currentHeroBook ? currentHeroBook.balance : 0)}
@@ -459,8 +464,8 @@ export default function CashbookListScreen() {
             <View style={styles.heroStatItem}>
               <View style={styles.heroStatIndicatorIncome} />
               <View>
-                <Text style={styles.heroStatLabel}>Pemasukan</Text>
-                <Text style={styles.heroStatAmount}>
+                <Text style={styles.heroStatLabel} allowFontScaling={false}>Pemasukan</Text>
+                <Text style={styles.heroStatAmount} allowFontScaling={false}>
                   {hideBalance
                     ? '••••••'
                     : formatRupiah(currentHeroBook ? currentHeroBook.total_income : 0)}
@@ -471,8 +476,8 @@ export default function CashbookListScreen() {
             <View style={styles.heroStatItem}>
               <View style={styles.heroStatIndicatorExpense} />
               <View>
-                <Text style={styles.heroStatLabel}>Pengeluaran</Text>
-                <Text style={styles.heroStatAmount}>
+                <Text style={styles.heroStatLabel} allowFontScaling={false}>Pengeluaran</Text>
+                <Text style={styles.heroStatAmount} allowFontScaling={false}>
                   {hideBalance
                     ? '••••••'
                     : formatRupiah(currentHeroBook ? currentHeroBook.total_expense : 0)}
@@ -508,6 +513,7 @@ export default function CashbookListScreen() {
               style={({ pressed }) => [
                 styles.shortcutCard,
                 {
+                  width: shortcutTileWidth,
                   backgroundColor: palette.card,
                   borderColor: palette.border,
                 },
@@ -526,10 +532,13 @@ export default function CashbookListScreen() {
               >
                 {renderShortcutIcon(item.iconType, palette.primary)}
               </View>
-              <Text style={[styles.shortcutName, { color: palette.ink }]} numberOfLines={1}>
+              <Text style={[styles.shortcutName, { color: palette.ink }]} numberOfLines={1} allowFontScaling={false}>
                 {item.name}
               </Text>
             </Pressable>
+          ))}
+          {Array.from({ length: (4 - (displayedShortcuts.length % 4)) % 4 }).map((_, idx) => (
+            <View key={`shortcut-spacer-${idx}`} style={{ width: shortcutTileWidth, height: 0 }} />
           ))}
         </View>
 
@@ -693,8 +702,8 @@ export default function CashbookListScreen() {
 
         {/* Footer Copyright */}
         <View style={styles.footerWrap}>
-          <Text style={[styles.footerCopyrightText, { color: palette.inkMuted }]}>
-            © 2026 CatatKu
+          <Text style={[styles.footerCopyrightText, { color: palette.inkMuted }]} allowFontScaling={false}>
+            © 2026 CatatKu by Dani Abdul Wahid
           </Text>
         </View>
       </ScrollView>
@@ -892,10 +901,10 @@ const styles = StyleSheet.create({
   scroll: { flex: 1 },
   content: {
     paddingHorizontal: 18,
-    paddingTop: 50,
+    paddingTop: 12,
     paddingBottom: 40,
   },
-  header: { marginBottom: 14 },
+  header: { marginBottom: 8 },
   headerMainRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -952,9 +961,9 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   heroCard: {
-    borderRadius: 22,
-    padding: 18,
-    marginBottom: 20,
+    borderRadius: 20,
+    padding: 14,
+    marginBottom: 12,
     borderWidth: 1,
   },
   heroTopRow: {
@@ -999,7 +1008,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  heroBalanceWrap: { marginBottom: 14 },
+  heroBalanceWrap: { marginBottom: 8 },
   heroBalanceLabel: {
     fontFamily: FONTS.sansMedium,
     fontSize: 12,
@@ -1082,13 +1091,11 @@ const styles = StyleSheet.create({
   shortcutsGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    justifyContent: 'flex-start',
-    columnGap: 8,
+    justifyContent: 'space-between',
     rowGap: 10,
-    marginBottom: 20,
+    marginBottom: 14,
   },
   shortcutCard: {
-    width: '23%',
     borderRadius: 16,
     paddingVertical: 12,
     paddingHorizontal: 2,
@@ -1392,18 +1399,15 @@ const styles = StyleSheet.create({
   },
   footerWrap: {
     marginTop: 'auto',
-    paddingTop: 36,
+    paddingTop: 32,
     paddingBottom: 24,
     alignItems: 'center',
-    gap: 4,
+    justifyContent: 'flex-end',
   },
   footerCopyrightText: {
-    fontFamily: FONTS.sansBold,
-    fontSize: 11,
-    letterSpacing: 0.3,
-  },
-  footerSubText: {
     fontFamily: FONTS.sansRegular,
-    fontSize: 10,
+    fontSize: 9.5,
+    letterSpacing: 0.2,
+    opacity: 0.65,
   },
 });

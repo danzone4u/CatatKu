@@ -1,11 +1,12 @@
-import { View, Text, StyleSheet, TextInput, Pressable, ScrollView, useWindowDimensions } from 'react-native';
+import { View, Text, StyleSheet, TextInput, Pressable, ScrollView, useWindowDimensions, KeyboardAvoidingView, Platform } from 'react-native';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useState, useCallback } from 'react';
 import { router, Stack, useLocalSearchParams, useFocusEffect } from 'expo-router';
-import { createCashbook, updateCashbook, getCashbookById } from '../src/database/queries';
+import { createCashbook, updateCashbook, getCashbookById, getCashbooks } from '../src/database/queries';
 import { EMOJI_LIST } from '../src/constants/categories';
 import { FONTS } from '../src/constants/theme';
 import { useThemeStore } from '../src/stores/useThemeStore';
+import { useCashbookStore } from '../src/stores/useCashbookStore';
 import { formatNumberThousand, parseRupiahInput } from '../src/utils/currency';
 import { ModernConfirmModal, type ModalType } from '../src/components/ModernConfirmModal';
 
@@ -77,6 +78,8 @@ export default function CashbookModalScreen() {
     }, [db, isEdit, params.id])
   );
 
+  const { setActiveCashbook } = useCashbookStore();
+
   async function handleSave() {
     if (!name.trim()) {
       showAlert('Perhatian', 'Nama Catatan wajib diisi', 'warning');
@@ -86,24 +89,42 @@ export default function CashbookModalScreen() {
     const budget = parseRupiahInput(budgetLimit);
 
     if (isEdit) {
-      await updateCashbook(db, parseInt(params.id!, 10), {
+      const bookId = parseInt(params.id!, 10);
+      await updateCashbook(db, bookId, {
         name: name.trim(),
         icon: selectedEmoji,
         color: selectedColor,
         budget_limit: budget > 0 ? budget : null,
         type: bookType,
       });
+      const updated = await getCashbookById(db, bookId);
+      if (updated) setActiveCashbook(updated);
+      router.back();
     } else {
-      await createCashbook(db, {
+      const existingBooks = await getCashbooks(db, true);
+      const isFirstBook = existingBooks.length === 0;
+
+      const newId = await createCashbook(db, {
         name: name.trim(),
         icon: selectedEmoji,
         color: selectedColor,
         budget_limit: budget > 0 ? budget : null,
         type: bookType,
       });
-    }
 
-    router.back();
+      const newBook = await getCashbookById(db, newId);
+      if (newBook) setActiveCashbook(newBook);
+
+      if (isFirstBook) {
+        // Alur onboarding pertama kali: langsung masuk ke dashboard catatan baru
+        router.replace({
+          pathname: '/(tabs)',
+          params: { cashbookId: newId.toString() },
+        });
+      } else {
+        router.back();
+      }
+    }
   }
 
   return (
@@ -117,13 +138,20 @@ export default function CashbookModalScreen() {
           headerTitleStyle: { fontWeight: '700', fontFamily: FONTS.serifTitle },
         }}
       />
-      <ScrollView
-        contentContainerStyle={[
-          styles.content,
-          isTablet && { maxWidth: 640, width: '100%', alignSelf: 'center' },
-        ]}
-        showsVerticalScrollIndicator={false}
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
+        <ScrollView
+          contentContainerStyle={[
+            styles.content,
+            { paddingBottom: 120 },
+            isTablet && { maxWidth: 640, width: '100%', alignSelf: 'center' },
+          ]}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+          automaticallyAdjustKeyboardInsets={true}
+        >
         {/* Preview Header */}
         <View style={styles.previewContainer}>
           <View style={[styles.previewIconBox, { backgroundColor: selectedColor }]}>
@@ -160,6 +188,8 @@ export default function CashbookModalScreen() {
                 { color: palette.inkMuted },
                 bookType === 'personal' && { color: palette.primary, fontWeight: '700' },
               ]}
+              numberOfLines={1}
+              allowFontScaling={false}
             >
               Pribadi
             </Text>
@@ -180,6 +210,8 @@ export default function CashbookModalScreen() {
                 { color: palette.inkMuted },
                 bookType === 'organization' && { color: palette.primary, fontWeight: '700' },
               ]}
+              numberOfLines={1}
+              allowFontScaling={false}
             >
               Organisasi
             </Text>
@@ -200,6 +232,8 @@ export default function CashbookModalScreen() {
                 { color: palette.inkMuted },
                 bookType === 'business' && { color: palette.primary, fontWeight: '700' },
               ]}
+              numberOfLines={1}
+              allowFontScaling={false}
             >
               Bisnis / Usaha
             </Text>
@@ -268,6 +302,7 @@ export default function CashbookModalScreen() {
           </Text>
         </Pressable>
       </ScrollView>
+    </KeyboardAvoidingView>
 
       <ModernConfirmModal
         visible={modalAlert.visible}
@@ -311,6 +346,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     borderRadius: 12,
     borderWidth: 1,
+    minHeight: 42,
     gap: 4,
   },
   typeBtnIcon: { fontSize: 14 },

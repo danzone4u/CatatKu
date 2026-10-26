@@ -1,4 +1,5 @@
 import * as Notifications from 'expo-notifications';
+import { AndroidImportance, AndroidNotificationVisibility } from 'expo-notifications';
 import { Platform } from 'react-native';
 import type { SQLiteDatabase } from 'expo-sqlite';
 import { getDebts, getRecurringRules } from '../database/queries';
@@ -15,8 +16,22 @@ Notifications.setNotificationHandler({
   }),
 });
 
+export async function setupNotificationChannels(): Promise<void> {
+  if (Platform.OS === 'android') {
+    await Notifications.setNotificationChannelAsync('reminders', {
+      name: 'Pengingat & Jatuh Tempo',
+      importance: AndroidImportance.HIGH,
+      vibrationPattern: [0, 250, 250, 250],
+      lightColor: '#1B6E67',
+      lockscreenVisibility: AndroidNotificationVisibility.PUBLIC,
+      sound: 'default',
+    });
+  }
+}
+
 export async function requestNotificationPermission(): Promise<boolean> {
   try {
+    await setupNotificationChannels();
     const { status: existingStatus } = await Notifications.getPermissionsAsync();
     let finalStatus = existingStatus;
     if (existingStatus !== 'granted') {
@@ -45,7 +60,6 @@ export async function checkDueReminders(db: SQLiteDatabase, cashbookId: number):
   const currentYear = today.getFullYear();
   const currentMonth = today.getMonth() + 1; // 1-12
   const currentMonthStr = `${currentYear}-${String(currentMonth).padStart(2, '0')}`;
-  const currentDay = today.getDate();
 
   try {
     // 1. Tagihan & Transaksi Terjadwal Manual (is_auto_execute = 0)
@@ -122,11 +136,17 @@ export async function triggerLocalNotificationIfDue(db: SQLiteDatabase, cashbook
 
   if (urgentItems.length > 0) {
     const first = urgentItems[0];
+    const isOverdue = first.daysRemaining < 0;
+    const cleanTitle = first.title.replace(/^(Rutin|Otomatis):\s*/, '');
+    const prefix = isOverdue ? 'Jatuh Tempo Terlewat' : 'Jatuh Tempo Hari Ini';
+
     await Notifications.scheduleNotificationAsync({
       content: {
-        title: `⚠️ Pengingat: ${first.title}`,
-        body: `${first.description} (${formatRupiah(first.amount)})`,
+        title: `${prefix}: ${cleanTitle}`,
+        body: `Nominal ${formatRupiah(first.amount)} • Ketuk untuk meninjau catatan`,
+        color: '#1B6E67',
         sound: true,
+        priority: Notifications.AndroidNotificationPriority.HIGH,
       },
       trigger: null, // langsung kirim sekarang
     });

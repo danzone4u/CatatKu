@@ -121,11 +121,6 @@ export default function DebtsScreen() {
           styles.listContent,
           debts.length === 0 && { flexGrow: 1 },
         ]}
-        ListFooterComponent={
-          <View style={styles.footerWrap}>
-            <Text style={[styles.footerText, { color: palette.inkMuted }]}>© 2026 CatatKu</Text>
-          </View>
-        }
       />
 
       <ModernConfirmModal

@@ -53,13 +53,7 @@ export default function TransferScreen() {
     });
   };
 
-  useFocusEffect(
-    useCallback(() => {
-      loadData();
-    }, [cashbookId])
-  );
-
-  async function loadData() {
+  const loadData = useCallback(async () => {
     const [accList, tList] = await Promise.all([
       getAccounts(db, cashbookId),
       getTransfers(db, cashbookId),
@@ -73,7 +67,13 @@ export default function TransferScreen() {
     } else if (accList.length === 1) {
       if (!fromAccountId) setFromAccountId(accList[0].id);
     }
-  }
+  }, [db, cashbookId, fromAccountId, toAccountId]);
+
+  useFocusEffect(
+    useCallback(() => {
+      loadData();
+    }, [loadData])
+  );
 
   async function handleTransfer() {
     if (!fromAccountId || !toAccountId) {
@@ -296,7 +296,13 @@ export default function TransferScreen() {
         </Text>
 
         {transfers.length === 0 ? (
-          <Text style={[styles.emptyText, { color: palette.inkMuted }]}>Belum ada riwayat transfer saldo</Text>
+          <View style={[styles.emptyWrap, { backgroundColor: palette.card, borderColor: palette.border }]}>
+            <Text style={styles.emptyIcon}>🔄</Text>
+            <Text style={[styles.emptyTitle, { color: palette.ink }]}>Belum Ada Transfer</Text>
+            <Text style={[styles.emptySub, { color: palette.inkMuted }]}>
+              Riwayat mutasi perpindahan antar dompet akan otomatis tercatat rapi di sini
+            </Text>
+          </View>
         ) : (
           transfers.map((t) => (
             <View
@@ -416,6 +422,16 @@ const styles = StyleSheet.create({
     marginTop: 20,
   },
   submitBtnText: { color: '#FFFFFF', fontSize: 15, fontWeight: '700', fontFamily: FONTS.sansBold },
+  emptyWrap: {
+    borderRadius: 14,
+    borderWidth: 1,
+    padding: 24,
+    alignItems: 'center',
+    marginTop: 12,
+  },
+  emptyIcon: { fontSize: 32, marginBottom: 8 },
+  emptyTitle: { fontSize: 15, fontFamily: FONTS.sansBold, marginBottom: 4 },
+  emptySub: { fontSize: 13, fontFamily: FONTS.sansRegular, textAlign: 'center', lineHeight: 18 },
   emptyText: { textAlign: 'center', marginTop: 16, fontFamily: FONTS.sansRegular },
   historyCard: {
     borderRadius: 14,

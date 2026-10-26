@@ -62,13 +62,7 @@ export default function DebtDetailScreen() {
     });
   };
 
-  useFocusEffect(
-    useCallback(() => {
-      loadData();
-    }, [debtId])
-  );
-
-  async function loadData() {
+  const loadData = useCallback(async () => {
     const [d, pList, accList] = await Promise.all([
       getDebtById(db, debtId),
       getDebtPayments(db, debtId),
@@ -80,7 +74,13 @@ export default function DebtDetailScreen() {
     if (accList.length > 0 && !selectedAccountId) {
       setSelectedAccountId(accList[0].id);
     }
-  }
+  }, [db, debtId, selectedAccountId]);
+
+  useFocusEffect(
+    useCallback(() => {
+      loadData();
+    }, [loadData])
+  );
 
   async function handleAddPayment() {
     const numAmount = parseRupiahInput(amount);
@@ -297,7 +297,13 @@ export default function DebtDetailScreen() {
         <Text style={[styles.historyTitle, { color: palette.ink }]}>Riwayat Cicilan ({payments.length})</Text>
 
         {payments.length === 0 ? (
-          <Text style={[styles.emptyText, { color: palette.inkMuted }]}>Belum ada riwayat cicilan yang dicatat</Text>
+          <View style={[styles.emptyWrap, { backgroundColor: palette.card, borderColor: palette.border }]}>
+            <Text style={styles.emptyIcon}>📝</Text>
+            <Text style={[styles.emptyTitle, { color: palette.ink }]}>Belum Ada Cicilan</Text>
+            <Text style={[styles.emptySub, { color: palette.inkMuted }]}>
+              Setiap pembayaran sebagian atau cicilan hutang akan tercatat runut di sini
+            </Text>
+          </View>
         ) : (
           payments.map((p) => (
             <View
@@ -442,6 +448,16 @@ const styles = StyleSheet.create({
   },
   saveBtnText: { color: '#FFFFFF', fontSize: 14, fontWeight: '700', fontFamily: FONTS.sansBold },
   historyTitle: { fontSize: 16, fontWeight: '700', fontFamily: FONTS.sansBold, marginBottom: 10 },
+  emptyWrap: {
+    borderRadius: 14,
+    borderWidth: 1,
+    padding: 24,
+    alignItems: 'center',
+    marginTop: 8,
+  },
+  emptyIcon: { fontSize: 32, marginBottom: 8 },
+  emptyTitle: { fontSize: 15, fontFamily: FONTS.sansBold, marginBottom: 4 },
+  emptySub: { fontSize: 13, fontFamily: FONTS.sansRegular, textAlign: 'center', lineHeight: 18 },
   emptyText: { textAlign: 'center', marginTop: 12, fontFamily: FONTS.sansRegular },
   paymentCard: {
     borderRadius: 14,

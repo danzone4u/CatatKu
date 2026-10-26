@@ -597,11 +597,6 @@ export default function SavingsGoalsScreen() {
             );
           })
         )}
-
-        {/* Footer Copyright */}
-        <View style={styles.footerWrap}>
-          <Text style={[styles.footerText, { color: palette.inkMuted }]}>© 2026 CatatKu</Text>
-        </View>
       </ScrollView>
 
       {/* DatePicker Visual Modal */}

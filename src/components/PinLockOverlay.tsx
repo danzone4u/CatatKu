@@ -1,5 +1,5 @@
 import { View, Text, StyleSheet, Pressable, Modal } from 'react-native';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useSQLiteContext } from 'expo-sqlite';
 import * as LocalAuthentication from 'expo-local-authentication';
 import { getSetting } from '../database/queries';
@@ -13,35 +13,7 @@ export default function PinLockOverlay() {
   const [hasBiometrics, setHasBiometrics] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
 
-  useEffect(() => {
-    checkPinStatus();
-  }, []);
-
-  async function checkPinStatus() {
-    try {
-      const enabled = await getSetting(db, 'pin_enabled');
-      const secret = await getSetting(db, 'app_pin');
-      const bioEnabled = await getSetting(db, 'biometric_enabled');
-
-      if (enabled === 'true' && secret) {
-        setSavedPin(secret);
-        setIsLocked(true);
-
-        const compatible = await LocalAuthentication.hasHardwareAsync();
-        const enrolled = await LocalAuthentication.isEnrolledAsync();
-        const isBioReady = compatible && enrolled;
-        setHasBiometrics(isBioReady);
-
-        if (bioEnabled !== 'false' && isBioReady) {
-          promptBiometrics();
-        }
-      }
-    } catch (e) {
-      console.warn('Pin check warning:', e);
-    }
-  }
-
-  async function promptBiometrics() {
+  const promptBiometrics = useCallback(async () => {
     try {
       const result = await LocalAuthentication.authenticateAsync({
         promptMessage: 'Buka Kunci CatatKu',
@@ -53,7 +25,41 @@ export default function PinLockOverlay() {
         setPin('');
       }
     } catch {}
-  }
+  }, []);
+
+  useEffect(() => {
+    let isMounted = true;
+    (async () => {
+      try {
+        const enabled = await getSetting(db, 'pin_enabled');
+        const secret = await getSetting(db, 'app_pin');
+        const bioEnabled = await getSetting(db, 'biometric_enabled');
+
+        if (!isMounted) return;
+
+        if (enabled === 'true' && secret) {
+          setSavedPin(secret);
+          setIsLocked(true);
+
+          const compatible = await LocalAuthentication.hasHardwareAsync();
+          const enrolled = await LocalAuthentication.isEnrolledAsync();
+          const isBioReady = compatible && enrolled;
+          if (!isMounted) return;
+          setHasBiometrics(isBioReady);
+
+          if (bioEnabled !== 'false' && isBioReady) {
+            promptBiometrics();
+          }
+        }
+      } catch (e) {
+        console.warn('Pin check warning:', e);
+      }
+    })();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [db, promptBiometrics]);
 
   function handleKeyPress(num: string) {
     if (pin.length < 4) {
