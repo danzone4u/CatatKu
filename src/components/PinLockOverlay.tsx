@@ -1,17 +1,20 @@
-import { View, Text, StyleSheet, Pressable, Modal } from 'react-native';
-import { useState, useEffect, useCallback } from 'react';
+import { View, Text, StyleSheet, Pressable, Modal, AppState, type AppStateStatus } from 'react-native';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useSQLiteContext } from 'expo-sqlite';
 import * as LocalAuthentication from 'expo-local-authentication';
 import { getSetting } from '../database/queries';
 import { PALETTE, FONTS } from '../constants/theme';
+import { useLockStore } from '../stores/useLockStore';
 
 export default function PinLockOverlay() {
   const db = useSQLiteContext();
-  const [isLocked, setIsLocked] = useState(false);
+  const { isLocked, setIsLocked, refreshSeq } = useLockStore();
   const [pin, setPin] = useState('');
   const [savedPin, setSavedPin] = useState<string | null>(null);
   const [hasBiometrics, setHasBiometrics] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
+
+  const appStateRef = useRef<AppStateStatus>((AppState.currentState as AppStateStatus) ?? 'active');
 
   const promptBiometrics = useCallback(async () => {
     try {
@@ -25,8 +28,38 @@ export default function PinLockOverlay() {
         setPin('');
       }
     } catch {}
-  }, []);
+  }, [setIsLocked]);
 
+  const verifyLockStatus = useCallback(async (shouldPromptBio = true) => {
+    try {
+      const enabled = await getSetting(db, 'pin_enabled');
+      const secret = await getSetting(db, 'app_pin');
+      const bioEnabled = await getSetting(db, 'biometric_enabled');
+
+      const isSecured = (enabled === 'true' || enabled === '1') && !!secret;
+
+      if (isSecured) {
+        setSavedPin(secret);
+        setIsLocked(true);
+
+        const compatible = await LocalAuthentication.hasHardwareAsync();
+        const enrolled = await LocalAuthentication.isEnrolledAsync();
+        const isBioReady = compatible && enrolled;
+        setHasBiometrics(isBioReady);
+
+        if (bioEnabled !== '0' && isBioReady && shouldPromptBio) {
+          promptBiometrics();
+        }
+      } else {
+        setSavedPin(null);
+        setIsLocked(false);
+      }
+    } catch (e) {
+      console.warn('Pin check warning:', e);
+    }
+  }, [db, promptBiometrics, setIsLocked]);
+
+  // Cek saat pertama mount atau saat ada perubahan setting di halaman lain
   useEffect(() => {
     let isMounted = true;
     (async () => {
@@ -37,7 +70,8 @@ export default function PinLockOverlay() {
 
         if (!isMounted) return;
 
-        if (enabled === 'true' && secret) {
+        const isSecured = (enabled === 'true' || enabled === '1') && !!secret;
+        if (isSecured) {
           setSavedPin(secret);
           setIsLocked(true);
 
@@ -47,9 +81,12 @@ export default function PinLockOverlay() {
           if (!isMounted) return;
           setHasBiometrics(isBioReady);
 
-          if (bioEnabled !== 'false' && isBioReady) {
+          if (bioEnabled !== '0' && isBioReady) {
             promptBiometrics();
           }
+        } else {
+          setSavedPin(null);
+          setIsLocked(false);
         }
       } catch (e) {
         console.warn('Pin check warning:', e);
@@ -59,7 +96,25 @@ export default function PinLockOverlay() {
     return () => {
       isMounted = false;
     };
-  }, [db, promptBiometrics]);
+  }, [db, promptBiometrics, refreshSeq, setIsLocked]);
+
+  // Kunci otomatis saat aplikasi dari background/keluar kembali ke foreground
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', (nextAppState) => {
+      if (
+        appStateRef.current.match(/inactive|background/) &&
+        nextAppState === 'active'
+      ) {
+        // App kembali aktif dari latar belakang
+        verifyLockStatus(true);
+      }
+      appStateRef.current = nextAppState;
+    });
+
+    return () => {
+      subscription.remove();
+    };
+  }, [verifyLockStatus]);
 
   function handleKeyPress(num: string) {
     if (pin.length < 4) {

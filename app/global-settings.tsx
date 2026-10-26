@@ -32,12 +32,14 @@ import * as LocalAuthentication from 'expo-local-authentication';
 import { FONTS } from '../src/constants/theme';
 import { BackArrowIcon } from '../src/components/ActionIcons';
 import { ModernConfirmModal, type ModalType } from '../src/components/ModernConfirmModal';
+import { useLockStore } from '../src/stores/useLockStore';
 
 export default function GlobalSettingsScreen() {
   const db = useSQLiteContext();
   const { width } = useWindowDimensions();
   const isTablet = width >= 600;
   const { isDarkMode, palette, toggleTheme } = useThemeStore();
+  const requestLockCheck = useLockStore((s) => s.requestLockCheck);
 
   // PIN & Biometric
   const [pinEnabled, setPinEnabled] = useState(false);
@@ -45,6 +47,7 @@ export default function GlobalSettingsScreen() {
   const [hasBiometricSensor, setHasBiometricSensor] = useState(false);
   const [showPinInput, setShowPinInput] = useState(false);
   const [newPin, setNewPin] = useState('');
+  const [confirmPin, setConfirmPin] = useState('');
 
   // Info Modals
   const [showAboutModal, setShowAboutModal] = useState(false);
@@ -100,7 +103,8 @@ export default function GlobalSettingsScreen() {
   const loadSettings = useCallback(async () => {
     try {
       const pin = await getSetting(db, 'app_pin');
-      setPinEnabled(!!pin);
+      const pinActive = await getSetting(db, 'pin_enabled');
+      setPinEnabled((pinActive === 'true' || pinActive === '1') && !!pin);
 
       const bio = await getSetting(db, 'biometric_enabled');
       setBiometricEnabled(bio !== '0');
@@ -123,6 +127,7 @@ export default function GlobalSettingsScreen() {
     if (val) {
       setShowPinInput(true);
       setNewPin('');
+      setConfirmPin('');
     } else {
       setConfirmModal({
         visible: true,
@@ -134,28 +139,38 @@ export default function GlobalSettingsScreen() {
         confirmText: 'Ya, Matikan',
         onConfirm: async () => {
           closeConfirmModal();
+          await setSetting(db, 'pin_enabled', 'false');
           await setSetting(db, 'app_pin', '');
           setPinEnabled(false);
+          requestLockCheck();
         },
       });
     }
   }
 
   async function handleSavePin() {
-    if (newPin.length !== 4 && newPin.length !== 6) {
-      showModalAlert('Perhatian', 'PIN harus berupa 4 atau 6 digit angka', 'warning');
+    if (newPin.length !== 4) {
+      showModalAlert('Perhatian', 'PIN harus tepat 4 digit angka', 'warning');
       return;
     }
+    if (newPin !== confirmPin) {
+      showModalAlert('Perhatian', 'Konfirmasi PIN tidak cocok dengan PIN yang dimasukkan', 'warning');
+      return;
+    }
+    await setSetting(db, 'pin_enabled', 'true');
     await setSetting(db, 'app_pin', newPin);
     setPinEnabled(true);
     setShowPinInput(false);
     setNewPin('');
-    showModalAlert('Sukses', 'PIN keamanan berhasil diaktifkan.', 'success', '🔒');
+    setConfirmPin('');
+    requestLockCheck();
+    showModalAlert('Sukses', 'Kunci PIN keamanan berhasil diaktifkan.', 'success', '🔒');
   }
 
   async function handleToggleBiometric(val: boolean) {
     setBiometricEnabled(val);
     await setSetting(db, 'biometric_enabled', val ? '1' : '0');
+    requestLockCheck();
   }
 
   return (
@@ -245,6 +260,7 @@ export default function GlobalSettingsScreen() {
               onPress={() => {
                 setShowPinInput(true);
                 setNewPin('');
+                setConfirmPin('');
               }}
             >
               <Text style={[styles.linkLabel, { color: palette.primary }]}>🔑 Ganti Kode PIN</Text>
@@ -500,25 +516,42 @@ export default function GlobalSettingsScreen() {
           <View style={[styles.modalCard, { backgroundColor: palette.card, borderColor: palette.border }, isTablet && { maxWidth: 440 }]}>
             <Text style={[styles.modalTitle, { color: palette.ink }]}>Atur Kode PIN Baru</Text>
             <Text style={[styles.modalSubtitle, { color: palette.inkMuted }]}>
-              Masukkan 4 atau 6 digit angka rahasia untuk melindungi aplikasi Anda.
+              Masukkan 4 digit angka rahasia untuk melindungi aplikasi Anda.
             </Text>
 
+            <Text style={[styles.inputFieldLabel, { color: palette.inkSecondary }]}>PIN Baru (4 Digit)</Text>
             <TextInput
               style={[styles.pinInput, { backgroundColor: palette.cardMuted, borderColor: palette.border, color: palette.ink }]}
               placeholder="••••"
               placeholderTextColor={palette.inkMuted}
               keyboardType="number-pad"
               secureTextEntry
-              maxLength={6}
+              maxLength={4}
               value={newPin}
               onChangeText={setNewPin}
               autoFocus
             />
 
+            <Text style={[styles.inputFieldLabel, { color: palette.inkSecondary, marginTop: 12 }]}>Konfirmasi PIN</Text>
+            <TextInput
+              style={[styles.pinInput, { backgroundColor: palette.cardMuted, borderColor: palette.border, color: palette.ink }]}
+              placeholder="••••"
+              placeholderTextColor={palette.inkMuted}
+              keyboardType="number-pad"
+              secureTextEntry
+              maxLength={4}
+              value={confirmPin}
+              onChangeText={setConfirmPin}
+            />
+
             <View style={styles.modalActions}>
               <Pressable
                 style={[styles.cancelModalBtn, { borderColor: palette.border }]}
-                onPress={() => setShowPinInput(false)}
+                onPress={() => {
+                  setShowPinInput(false);
+                  setNewPin('');
+                  setConfirmPin('');
+                }}
               >
                 <Text style={[styles.cancelModalBtnText, { color: palette.inkMuted }]}>Batal</Text>
               </Pressable>
@@ -526,7 +559,7 @@ export default function GlobalSettingsScreen() {
                 style={[styles.saveModalBtn, { backgroundColor: palette.primary }]}
                 onPress={handleSavePin}
               >
-                <Text style={styles.saveModalBtnText}>Aktifkan PIN</Text>
+                <Text style={styles.saveModalBtnText}>Simpan PIN</Text>
               </Pressable>
             </View>
           </View>
@@ -823,20 +856,25 @@ const styles = StyleSheet.create({
     marginBottom: 16,
     lineHeight: 18,
   },
+  inputFieldLabel: {
+    fontFamily: FONTS.sansBold,
+    fontSize: 12,
+    marginBottom: 6,
+  },
   closeText: {
     fontSize: 18,
     fontFamily: FONTS.sansBold,
     padding: 4,
   },
   pinInput: {
-    height: 52,
+    height: 48,
     borderRadius: 12,
     borderWidth: 1,
     textAlign: 'center',
     fontFamily: FONTS.sansBold,
-    fontSize: 24,
-    letterSpacing: 10,
-    marginBottom: 18,
+    fontSize: 22,
+    letterSpacing: 8,
+    marginBottom: 6,
   },
   modalActions: {
     flexDirection: 'row',
