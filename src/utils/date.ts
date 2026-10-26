@@ -43,6 +43,18 @@ export function formatDateShort(dateStr: string): string {
   return `${d} ${month}`;
 }
 
+export function formatDateOnly(dateStr: string): string {
+  if (!dateStr) return '';
+  const date = new Date(dateStr.replace(' ', 'T'));
+  if (isNaN(date.getTime())) return dateStr.split(' ')[0] || dateStr;
+
+  const d = String(date.getDate()).padStart(2, '0');
+  const month = MONTHS[date.getMonth()]?.substring(0, 3);
+  const year = date.getFullYear();
+
+  return `${d} ${month} ${year}`;
+}
+
 export function formatTimeOnly(dateStr: string): string {
   if (!dateStr) return '';
   const date = new Date(dateStr.replace(' ', 'T'));

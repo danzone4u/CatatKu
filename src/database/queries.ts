@@ -668,6 +668,57 @@ export async function deleteTransaction(db: SQLiteDatabase, id: number): Promise
 }
 
 // ─── Summary (Per Cashbook) ───
+export async function getCashbookOpeningBalance(
+  db: SQLiteDatabase,
+  cashbookId: number,
+  startDateStr: string
+): Promise<number> {
+  const initAcc = await db.getFirstAsync<{ total: number }>(
+    'SELECT COALESCE(SUM(balance), 0) as total FROM accounts WHERE cashbook_id = ?',
+    cashbookId
+  );
+  const incBefore = await db.getFirstAsync<{ total: number }>(
+    'SELECT COALESCE(SUM(amount), 0) as total FROM transactions WHERE cashbook_id = ? AND type = ? AND date < ?',
+    cashbookId,
+    'income',
+    startDateStr
+  );
+  const expBefore = await db.getFirstAsync<{ total: number }>(
+    'SELECT COALESCE(SUM(amount), 0) as total FROM transactions WHERE cashbook_id = ? AND type = ? AND date < ?',
+    cashbookId,
+    'expense',
+    startDateStr
+  );
+  const feeBefore = await db.getFirstAsync<{ total: number }>(
+    'SELECT COALESCE(SUM(fee), 0) as total FROM transfers WHERE cashbook_id = ? AND date < ?',
+    cashbookId,
+    startDateStr
+  );
+  const debtOutBefore = await db.getFirstAsync<{ total: number }>(
+    `SELECT COALESCE(SUM(dp.amount), 0) as total FROM debt_payments dp
+     JOIN debts d ON dp.debt_id = d.id
+     WHERE d.cashbook_id = ? AND d.type = 'debt' AND dp.date < ?`,
+    cashbookId,
+    startDateStr
+  );
+  const debtInBefore = await db.getFirstAsync<{ total: number }>(
+    `SELECT COALESCE(SUM(dp.amount), 0) as total FROM debt_payments dp
+     JOIN debts d ON dp.debt_id = d.id
+     WHERE d.cashbook_id = ? AND d.type = 'receivable' AND dp.date < ?`,
+    cashbookId,
+    startDateStr
+  );
+
+  return (
+    (initAcc?.total ?? 0) +
+    (incBefore?.total ?? 0) -
+    (expBefore?.total ?? 0) -
+    (feeBefore?.total ?? 0) +
+    (debtInBefore?.total ?? 0) -
+    (debtOutBefore?.total ?? 0)
+  );
+}
+
 export async function getMonthlySummary(
   db: SQLiteDatabase,
   cashbookId: number,

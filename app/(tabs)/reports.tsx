@@ -18,9 +18,9 @@ import { StatusBar } from 'expo-status-bar';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useThemeStore } from '../../src/stores/useThemeStore';
 import { useCashbookStore } from '../../src/stores/useCashbookStore';
-import { getSavingsGoals, type SavingsGoal } from '../../src/database/queries';
+import { getSavingsGoals, getCashbookOpeningBalance, type SavingsGoal } from '../../src/database/queries';
 import { formatRupiah } from '../../src/utils/currency';
-import { formatDate } from '../../src/utils/date';
+import { formatDate, formatDateOnly } from '../../src/utils/date';
 import { FONTS } from '../../src/constants/theme';
 import { ModernConfirmModal, type ModalType } from '../../src/components/ModernConfirmModal';
 
@@ -372,16 +372,56 @@ export default function ReportsScreen() {
         ORDER BY t.date ASC, t.id ASC
       `, cashbookId, startDateStr, endDateStr);
 
+      // Hitung Saldo Awal Periode (Opening Balance) sesuai kaidah akuntansi buku kas
+      const openingBalance = await getCashbookOpeningBalance(db, cashbookId, startDateStr);
+
+      let runningBalance = openingBalance;
+      let totalDebit = 0;
+      let totalCredit = 0;
+
+      const transactionRows = periodTransactions.map((t, idx) => {
+        const isIncome = t.type === 'income';
+        const debit = isIncome ? t.amount : 0;
+        const credit = isIncome ? 0 : t.amount;
+        totalDebit += debit;
+        totalCredit += credit;
+        runningBalance += isIncome ? t.amount : -t.amount;
+
+        return `
+          <tr>
+            <td style="text-align: center; padding: 7px 5px; border-bottom: 1px solid #E2E8F0; color: #64748B;">${idx + 1}</td>
+            <td style="padding: 7px 8px; border-bottom: 1px solid #E2E8F0; white-space: nowrap; font-size: 11px;">${formatDateOnly(t.date)}</td>
+            <td style="padding: 7px 8px; border-bottom: 1px solid #E2E8F0;">
+              <div style="font-weight: 700; color: #0F172A;">${t.category_icon} ${t.category_name}</div>
+              ${t.note ? `<div style="font-size: 10px; color: #64748B; margin-top: 1px;">${t.note}</div>` : ''}
+            </td>
+            <td style="padding: 7px 8px; border-bottom: 1px solid #E2E8F0; color: #475569; font-size: 11px; white-space: nowrap;">${t.account_name ?? 'Dompet Utama'}</td>
+            <td style="padding: 7px 8px; border-bottom: 1px solid #E2E8F0; text-align: right; color: #059669; font-weight: 700; white-space: nowrap;">
+              ${debit > 0 ? formatRupiah(debit) : '-'}
+            </td>
+            <td style="padding: 7px 8px; border-bottom: 1px solid #E2E8F0; text-align: right; color: #DC2626; font-weight: 700; white-space: nowrap;">
+              ${credit > 0 ? formatRupiah(credit) : '-'}
+            </td>
+            <td style="padding: 7px 8px; border-bottom: 1px solid #E2E8F0; text-align: right; font-weight: 800; color: #0F172A; white-space: nowrap;">
+              ${formatRupiah(runningBalance)}
+            </td>
+          </tr>
+        `;
+      }).join('');
+
+      const endingBalance = runningBalance;
+      const netPeriod = totalDebit - totalCredit;
+
       const incomeBreakdownRows = incomeCategoryBreakdown.map((item) => `
         <tr>
-          <td style="padding: 9px 10px; border-bottom: 1px solid #E2E8F0;">
-            <span style="font-size: 15px; margin-right: 6px;">${item.category_icon}</span>
+          <td style="padding: 7px 8px; border-bottom: 1px solid #E2E8F0;">
+            <span style="font-size: 14px; margin-right: 4px;">${item.category_icon}</span>
             <strong>${item.category_name}</strong>
           </td>
-          <td style="padding: 9px 10px; border-bottom: 1px solid #E2E8F0; text-align: right; color: #059669; font-weight: 700;">
+          <td style="padding: 7px 8px; border-bottom: 1px solid #E2E8F0; text-align: right; color: #059669; font-weight: 700;">
             +${formatRupiah(item.total_amount)}
           </td>
-          <td style="padding: 9px 10px; border-bottom: 1px solid #E2E8F0; text-align: right; color: #64748B;">
+          <td style="padding: 7px 8px; border-bottom: 1px solid #E2E8F0; text-align: right; color: #64748B;">
             ${item.percentage.toFixed(1)}%
           </td>
         </tr>
@@ -389,35 +429,15 @@ export default function ReportsScreen() {
 
       const expenseBreakdownRows = categoryBreakdown.map((item) => `
         <tr>
-          <td style="padding: 9px 10px; border-bottom: 1px solid #E2E8F0;">
-            <span style="font-size: 15px; margin-right: 6px;">${item.category_icon}</span>
+          <td style="padding: 7px 8px; border-bottom: 1px solid #E2E8F0;">
+            <span style="font-size: 14px; margin-right: 4px;">${item.category_icon}</span>
             <strong>${item.category_name}</strong>
           </td>
-          <td style="padding: 9px 10px; border-bottom: 1px solid #E2E8F0; text-align: right; color: #E11D48; font-weight: 700;">
+          <td style="padding: 7px 8px; border-bottom: 1px solid #E2E8F0; text-align: right; color: #E11D48; font-weight: 700;">
             -${formatRupiah(item.total_amount)}
           </td>
-          <td style="padding: 9px 10px; border-bottom: 1px solid #E2E8F0; text-align: right; color: #64748B;">
+          <td style="padding: 7px 8px; border-bottom: 1px solid #E2E8F0; text-align: right; color: #64748B;">
             ${item.percentage.toFixed(1)}%
-          </td>
-        </tr>
-      `).join('');
-
-      const transactionRows = periodTransactions.map((t, idx) => `
-        <tr>
-          <td style="text-align: center; padding: 8px 6px; border-bottom: 1px solid #E2E8F0; color: #64748B;">${idx + 1}</td>
-          <td style="padding: 8px 10px; border-bottom: 1px solid #E2E8F0;">${formatDate(t.date)}</td>
-          <td style="padding: 8px 10px; border-bottom: 1px solid #E2E8F0;">
-            <span style="padding: 2px 7px; border-radius: 4px; font-weight: 800; font-size: 10px; background: ${t.type === 'income' ? '#DCFCE7' : '#FEE2E2'}; color: ${t.type === 'income' ? '#16A34A' : '#DC2626'};">
-              ${t.type === 'income' ? 'Masuk' : 'Keluar'}
-            </span>
-          </td>
-          <td style="padding: 8px 10px; border-bottom: 1px solid #E2E8F0;">
-            <span>${t.category_icon}</span> ${t.category_name}
-          </td>
-          <td style="padding: 8px 10px; border-bottom: 1px solid #E2E8F0; color: #475569;">${t.account_name ?? 'Dompet'}</td>
-          <td style="padding: 8px 10px; border-bottom: 1px solid #E2E8F0; color: #64748B;">${t.note || '-'}</td>
-          <td style="padding: 8px 10px; border-bottom: 1px solid #E2E8F0; text-align: right; font-weight: 800; color: ${t.type === 'income' ? '#059669' : '#DC2626'};">
-            ${t.type === 'income' ? '+' : '-'}${formatRupiah(t.amount)}
           </td>
         </tr>
       `).join('');
@@ -427,93 +447,143 @@ export default function ReportsScreen() {
         <html>
         <head>
           <meta charset="utf-8">
-          <title>Laporan Keuangan - CatatKu</title>
+          <title>Buku Kas & Laporan Arus Keuangan - CatatKu</title>
           <style>
-            body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: #0F172A; padding: 24px; line-height: 1.5; font-size: 12px; }
-            .header { border-bottom: 2px solid #0F766E; padding-bottom: 14px; margin-bottom: 20px; }
-            .logo { font-size: 24px; font-weight: 900; color: #0F766E; letter-spacing: -0.5px; }
-            .subtitle { font-size: 13px; color: #64748B; margin-top: 3px; }
-            .card-grid { display: flex; gap: 12px; margin-bottom: 22px; }
-            .card { flex: 1; padding: 12px 14px; border-radius: 10px; border: 1px solid #E2E8F0; background: #F8FAFC; }
-            .card-title { font-size: 11px; font-weight: 700; text-transform: uppercase; margin-bottom: 4px; }
-            .income-val { font-size: 18px; font-weight: 800; color: #059669; }
-            .expense-val { font-size: 18px; font-weight: 800; color: #E11D48; }
-            .net-val { font-size: 18px; font-weight: 800; color: #0F766E; }
-            table { width: 100%; border-collapse: collapse; margin-top: 8px; margin-bottom: 20px; font-size: 12px; }
-            th { text-align: left; padding: 8px 10px; background: #0F766E; color: #FFFFFF; font-weight: 700; border-radius: 2px; font-size: 11px; }
-            .section-head { font-size: 14px; font-weight: 800; margin-top: 20px; margin-bottom: 4px; }
-            .footer { margin-top: 28px; padding-top: 14px; border-top: 1px solid #E2E8F0; font-size: 11px; color: #94A3B8; text-align: center; }
+            @page { size: A4 portrait; margin: 16mm 14mm; }
+            body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: #0F172A; line-height: 1.45; font-size: 11px; margin: 0; padding: 0; }
+            .header { border-bottom: 2px solid #0F766E; padding-bottom: 12px; margin-bottom: 18px; }
+            .logo { font-size: 22px; font-weight: 900; color: #0F766E; letter-spacing: -0.5px; }
+            .doc-title { font-size: 15px; font-weight: 800; color: #0F172A; margin-top: 3px; }
+            .subtitle { font-size: 12px; color: #64748B; margin-top: 2px; }
+            
+            .card-grid { display: flex; gap: 10px; margin-bottom: 20px; }
+            .card { flex: 1; padding: 10px 12px; border-radius: 8px; border: 1px solid #E2E8F0; background: #F8FAFC; }
+            .card-title { font-size: 10px; font-weight: 700; text-transform: uppercase; color: #64748B; margin-bottom: 3px; }
+            .card-val { font-size: 15px; font-weight: 800; }
+            
+            table { width: 100%; border-collapse: collapse; margin-top: 6px; margin-bottom: 16px; font-size: 11px; }
+            th { text-align: left; padding: 7px 8px; background: #0F766E; color: #FFFFFF; font-weight: 700; font-size: 10px; letter-spacing: 0.3px; }
+            .section-head { font-size: 13px; font-weight: 800; margin-top: 18px; margin-bottom: 4px; }
+            .footer { margin-top: 24px; padding-top: 12px; border-top: 1px solid #E2E8F0; font-size: 10px; color: #94A3B8; text-align: center; }
+            tr { page-break-inside: avoid; }
           </style>
         </head>
         <body>
           <div class="header">
             <div class="logo">CatatKu</div>
-            <div class="subtitle">Laporan Arus Keuangan: <strong>${bookName}</strong> (${periodTitle})</div>
+            <div class="doc-title">Buku Kas & Laporan Arus Keuangan: <strong>${bookName}</strong></div>
+            <div class="subtitle">Periode Buku: <strong>${periodTitle}</strong> (${formatDateOnly(startDateStr)} s/d ${formatDateOnly(endDateStr)})</div>
           </div>
 
           <div class="card-grid">
             <div class="card">
-              <div class="card-title" style="color: #059669;">Total Pemasukan</div>
-              <div class="income-val">+${formatRupiah(income)}</div>
+              <div class="card-title">Saldo Awal Periode</div>
+              <div class="card-val" style="color: #0F172A;">${formatRupiah(openingBalance)}</div>
             </div>
             <div class="card">
-              <div class="card-title" style="color: #E11D48;">Total Pengeluaran</div>
-              <div class="expense-val">-${formatRupiah(expense)}</div>
+              <div class="card-title" style="color: #059669;">Penerimaan Kas (Debit)</div>
+              <div class="card-val" style="color: #059669;">+${formatRupiah(totalDebit)}</div>
             </div>
             <div class="card">
-              <div class="card-title" style="color: #0F766E;">Selisih Bersih</div>
-              <div class="net-val">${netSavings >= 0 ? '+' : ''}${formatRupiah(netSavings)}</div>
+              <div class="card-title" style="color: #E11D48;">Pengeluaran Kas (Kredit)</div>
+              <div class="card-val" style="color: #E11D48;">-${formatRupiah(totalCredit)}</div>
+            </div>
+            <div class="card">
+              <div class="card-title" style="color: #0F766E;">Saldo Akhir Periode</div>
+              <div class="card-val" style="color: #0F766E;">${formatRupiah(endingBalance)}</div>
+              <div style="font-size: 9px; font-weight: 700; color: ${netPeriod >= 0 ? '#059669' : '#DC2626'}; margin-top: 2px;">
+                ${netPeriod >= 0 ? 'Surplus Kas +' : 'Defisit Kas '}${formatRupiah(netPeriod)}
+              </div>
             </div>
           </div>
 
-          <div class="section-head" style="color: #059669;">Rincian Kategori Pemasukan</div>
-          <table>
-            <thead>
-              <tr style="background: #059669;">
-                <th>Kategori</th>
-                <th style="text-align: right;">Total Masuk</th>
-                <th style="text-align: right;">Porsi</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${incomeBreakdownRows || '<tr><td colspan="3" style="text-align:center; padding: 12px; color:#94A3B8;">Tidak ada data pemasukan pada periode ini</td></tr>'}
-            </tbody>
-          </table>
-
-          <div class="section-head" style="color: #E11D48;">Rincian Kategori Pengeluaran</div>
-          <table>
-            <thead>
-              <tr style="background: #E11D48;">
-                <th>Kategori</th>
-                <th style="text-align: right;">Total Keluar</th>
-                <th style="text-align: right;">Porsi</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${expenseBreakdownRows || '<tr><td colspan="3" style="text-align:center; padding: 12px; color:#94A3B8;">Tidak ada data pengeluaran pada periode ini</td></tr>'}
-            </tbody>
-          </table>
-
-          <div class="section-head" style="color: #0F172A;">Daftar Transaksi Lengkap (${periodTransactions.length})</div>
+          <!-- Bagian Utama: Buku Kas & Mutasi Kronologis -->
+          <div class="section-head" style="color: #0F172A;">
+            Buku Kas & Mutasi Transaksi Kronologis (${periodTransactions.length} Transaksi)
+          </div>
           <table>
             <thead>
               <tr>
                 <th style="width: 24px; text-align: center;">#</th>
-                <th>Tanggal</th>
-                <th>Tipe</th>
-                <th>Kategori</th>
-                <th>Dompet</th>
-                <th>Catatan</th>
-                <th style="text-align: right;">Jumlah</th>
+                <th style="width: 76px;">Tanggal</th>
+                <th>Keterangan / Pos Kategori</th>
+                <th style="width: 90px;">Akun / Dompet</th>
+                <th style="width: 95px; text-align: right;">Masuk (Debit)</th>
+                <th style="width: 95px; text-align: right;">Keluar (Kredit)</th>
+                <th style="width: 105px; text-align: right;">Saldo Berjalan</th>
               </tr>
             </thead>
             <tbody>
+              <tr style="background: #F8FAFC; font-weight: 700;">
+                <td style="text-align: center; padding: 7px 5px; border-bottom: 1px solid #CBD5E1; color: #94A3B8;">-</td>
+                <td style="padding: 7px 8px; border-bottom: 1px solid #CBD5E1; color: #64748B; font-size: 11px;">${formatDateOnly(startDateStr)}</td>
+                <td colspan="2" style="padding: 7px 8px; border-bottom: 1px solid #CBD5E1; color: #334155;">
+                  <em>SALDO AWAL PERIODE</em>
+                </td>
+                <td style="text-align: right; padding: 7px 8px; border-bottom: 1px solid #CBD5E1; color: #94A3B8;">-</td>
+                <td style="text-align: right; padding: 7px 8px; border-bottom: 1px solid #CBD5E1; color: #94A3B8;">-</td>
+                <td style="text-align: right; padding: 7px 8px; border-bottom: 1px solid #CBD5E1; font-weight: 800; color: #0F172A;">
+                  ${formatRupiah(openingBalance)}
+                </td>
+              </tr>
               ${transactionRows || '<tr><td colspan="7" style="text-align:center; padding: 14px; color:#94A3B8;">Tidak ada transaksi dicatat pada periode ini</td></tr>'}
             </tbody>
+            <tfoot>
+              <tr style="background: #F1F5F9; font-weight: 800; border-top: 2px solid #0F766E;">
+                <td colspan="4" style="text-align: right; padding: 8px 10px; color: #0F172A;">TOTAL PERIODE & SALDO AKHIR</td>
+                <td style="text-align: right; color: #059669; padding: 8px; font-size: 11px;">${formatRupiah(totalDebit)}</td>
+                <td style="text-align: right; color: #E11D48; padding: 8px; font-size: 11px;">${formatRupiah(totalCredit)}</td>
+                <td style="text-align: right; color: #0F766E; font-size: 12px; padding: 8px;">${formatRupiah(endingBalance)}</td>
+              </tr>
+            </tfoot>
           </table>
 
+          <!-- Bagian Bawah: Lampiran Breakdown Kategori -->
+          <div style="margin-top: 24px; page-break-inside: avoid;">
+            <div class="section-head" style="color: #0F766E; border-bottom: 1px solid #CBD5E1; padding-bottom: 4px;">
+              Lampiran: Analisis Penerimaan & Pengeluaran per Pos Kategori
+            </div>
+            <div style="display: flex; gap: 14px; margin-top: 8px;">
+              <div style="flex: 1;">
+                <div style="font-weight: 800; font-size: 11px; color: #059669; margin-bottom: 4px; text-transform: uppercase;">
+                  Pos Penerimaan Kas
+                </div>
+                <table>
+                  <thead>
+                    <tr style="background: #059669;">
+                      <th>Kategori</th>
+                      <th style="text-align: right;">Total Masuk</th>
+                      <th style="text-align: right; width: 44px;">Porsi</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    ${incomeBreakdownRows || '<tr><td colspan="3" style="text-align:center; padding: 10px; color:#94A3B8;">Tidak ada pemasukan</td></tr>'}
+                  </tbody>
+                </table>
+              </div>
+
+              <div style="flex: 1;">
+                <div style="font-weight: 800; font-size: 11px; color: #E11D48; margin-bottom: 4px; text-transform: uppercase;">
+                  Pos Pengeluaran Kas
+                </div>
+                <table>
+                  <thead>
+                    <tr style="background: #E11D48;">
+                      <th>Kategori</th>
+                      <th style="text-align: right;">Total Keluar</th>
+                      <th style="text-align: right; width: 44px;">Porsi</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    ${expenseBreakdownRows || '<tr><td colspan="3" style="text-align:center; padding: 10px; color:#94A3B8;">Tidak ada pengeluaran</td></tr>'}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+
           <div class="footer">
-            Dokumen resmi diekspor otomatis dari aplikasi CatatKu • Dicetak pada ${formatDate(new Date().toISOString())}
+            Dokumen resmi pembukuan kas diekspor otomatis dari aplikasi CatatKu • Dicetak pada ${formatDate(new Date().toISOString())}
           </div>
         </body>
         </html>
