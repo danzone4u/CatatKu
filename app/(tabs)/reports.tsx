@@ -353,7 +353,7 @@ export default function ReportsScreen() {
       const bookName = activeCashbook ? activeCashbook.name : 'Catatan Finansial';
       const { startDateStr, endDateStr } = getDateRange();
 
-      // Query seluruh transaksi di periode terkait (Pemasukan & Pengeluaran)
+      // Query seluruh transaksi di periode terkait (Pemasukan & Pengeluaran) kronologis dari awal ke akhir
       const periodTransactions = await db.getAllAsync<{
         id: number;
         type: 'income' | 'expense';
@@ -369,7 +369,7 @@ export default function ReportsScreen() {
         JOIN categories c ON t.category_id = c.id
         LEFT JOIN accounts a ON t.account_id = a.id
         WHERE t.cashbook_id = ? AND t.date >= ? AND t.date <= ?
-        ORDER BY t.date DESC
+        ORDER BY t.date ASC, t.id ASC
       `, cashbookId, startDateStr, endDateStr);
 
       const incomeBreakdownRows = incomeCategoryBreakdown.map((item) => `

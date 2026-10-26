@@ -13,7 +13,16 @@ export async function generateAndSharePdfReport(params: {
 }) {
   const { cashbookName, periodText, summary, transactions, debts } = params;
 
-  const transactionRows = transactions
+  // Urutkan transaksi dan hutang secara kronologis dari yang lebih dulu ke yang terbaru
+  const sortedTransactions = [...transactions].sort(
+    (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime() || a.id - b.id
+  );
+
+  const sortedDebts = [...debts].sort(
+    (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime() || a.id - b.id
+  );
+
+  const transactionRows = sortedTransactions
     .map(
       (t, index) => `
     <tr>
@@ -31,7 +40,7 @@ export async function generateAndSharePdfReport(params: {
     )
     .join('');
 
-  const debtRows = debts
+  const debtRows = sortedDebts
     .map(
       (d, index) => `
     <tr>

@@ -203,7 +203,11 @@ export default function RecurringScreen() {
     loadData();
   }
 
-  const handlePayPress = (rule: RecurringRule) => {
+  const handlePayPress = async (rule: RecurringRule) => {
+    try {
+      const accs = await getAccounts(db, cashbookId);
+      setAccounts(accs);
+    } catch {}
     setPayingRule(rule);
     setPayAccountId(rule.account_id ?? (accounts[0]?.id || null));
   };
@@ -603,7 +607,7 @@ export default function RecurringScreen() {
                           { color: accountId === acc.id ? palette.primary : palette.ink },
                         ]}
                       >
-                        {acc.name}
+                        {acc.name} ({formatRupiah(acc.calculated_balance)})
                       </Text>
                     </Pressable>
                   ))}
@@ -667,6 +671,8 @@ export default function RecurringScreen() {
             <ScrollView style={{ maxHeight: 180, marginBottom: 16 }}>
               {accounts.map((acc) => {
                 const isSelected = payAccountId === acc.id;
+                const isExpense = payingRule?.type === 'expense';
+                const isInsufficient = isExpense && payingRule && acc.calculated_balance < payingRule.amount;
                 return (
                   <Pressable
                     key={acc.id}
@@ -680,7 +686,22 @@ export default function RecurringScreen() {
                     <Text style={{ fontSize: 20 }}>{acc.icon || '💳'}</Text>
                     <View style={{ flex: 1, marginLeft: 10 }}>
                       <Text style={[styles.payAccName, { color: palette.ink }]}>{acc.name}</Text>
-                      <Text style={[styles.payAccBal, { color: palette.inkMuted }]}>Saldo: {formatRupiah(acc.balance)}</Text>
+                      <Text
+                        style={[
+                          styles.payAccBal,
+                          {
+                            color: isInsufficient
+                              ? palette.expense
+                              : isSelected
+                              ? palette.primary
+                              : palette.inkMuted,
+                            fontWeight: isInsufficient ? '700' : '500',
+                          },
+                        ]}
+                      >
+                        Saldo: {formatRupiah(acc.calculated_balance)}
+                        {isInsufficient ? ' • Saldo kurang' : ''}
+                      </Text>
                     </View>
                     <View style={[styles.payRadio, isSelected && { borderColor: palette.primary }]}>
                       {isSelected && <View style={[styles.payRadioInner, { backgroundColor: palette.primary }]} />}
