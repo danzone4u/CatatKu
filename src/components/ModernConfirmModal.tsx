@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, Modal, Pressable, TextInput } from 'react-native';
+import { View, Text, StyleSheet, Modal, Pressable, TextInput, ScrollView, useWindowDimensions } from 'react-native';
 import { PALETTE, FONTS } from '../constants/theme';
 import { useThemeStore } from '../stores/useThemeStore';
 
@@ -31,6 +31,7 @@ export function ModernConfirmModal({
   onConfirm,
 }: ModernConfirmModalProps) {
   const { palette, isDarkMode } = useThemeStore();
+  const { height: windowHeight, width: windowWidth } = useWindowDimensions();
   const [typedText, setTypedText] = useState('');
   const [prevVisible, setPrevVisible] = useState(visible);
 
@@ -80,6 +81,8 @@ export function ModernConfirmModal({
   };
 
   const colors = getThemeColors();
+  const maxCardHeight = Math.min(windowHeight * 0.85, 620);
+  const maxScrollHeight = Math.min(windowHeight * 0.38, 260);
 
   return (
     <Modal
@@ -89,13 +92,34 @@ export function ModernConfirmModal({
       onRequestClose={onCancel || onConfirm}
     >
       <View style={styles.overlay}>
-        <View style={[styles.card, { backgroundColor: palette.card, borderColor: palette.border }]}>
+        <View
+          style={[
+            styles.card,
+            {
+              backgroundColor: palette.card,
+              borderColor: palette.border,
+              maxHeight: maxCardHeight,
+              maxWidth: Math.min(windowWidth - 40, 360),
+            },
+          ]}
+        >
+          {/* Fixed Header */}
           <View style={[styles.iconBadge, { backgroundColor: colors.badgeBg }]}>
             <Text style={styles.iconText}>{colors.icon}</Text>
           </View>
 
           <Text style={[styles.title, { color: palette.ink }]}>{title}</Text>
-          <Text style={[styles.message, { color: palette.inkMuted }]}>{message}</Text>
+
+          {/* Scrollable Body */}
+          <ScrollView
+            style={[styles.scrollArea, { maxHeight: maxScrollHeight }]}
+            contentContainerStyle={styles.scrollContent}
+            showsVerticalScrollIndicator
+            nestedScrollEnabled
+            bounces={false}
+          >
+            <Text style={[styles.message, { color: palette.inkMuted }]}>{message}</Text>
+          </ScrollView>
 
           {requiredKeyword ? (
             <View style={styles.inputWrapper}>
@@ -121,6 +145,7 @@ export function ModernConfirmModal({
             </View>
           ) : null}
 
+          {/* Fixed Sticky Footer */}
           <View style={styles.buttonRow}>
             {cancelText ? (
               <Pressable
@@ -188,14 +213,21 @@ const styles = StyleSheet.create({
     fontSize: 19,
     fontWeight: '800',
     textAlign: 'center',
-    marginBottom: 8,
+    marginBottom: 10,
+  },
+  scrollArea: {
+    width: '100%',
+    marginBottom: 16,
+  },
+  scrollContent: {
+    paddingHorizontal: 4,
+    paddingVertical: 2,
   },
   message: {
     fontFamily: FONTS.sansRegular,
     fontSize: 13,
     textAlign: 'center',
-    lineHeight: 19,
-    marginBottom: 18,
+    lineHeight: 20,
   },
   inputWrapper: {
     width: '100%',
