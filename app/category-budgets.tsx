@@ -1,4 +1,4 @@
-import { View, Text, StyleSheet, Pressable, ScrollView, TextInput, useWindowDimensions } from 'react-native';
+import { View, Text, StyleSheet, Pressable, ScrollView, TextInput, useWindowDimensions, KeyboardAvoidingView, Platform } from 'react-native';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useCallback, useState } from 'react';
 import { useFocusEffect, Stack, router } from 'expo-router';
@@ -152,13 +152,18 @@ export default function CategoryBudgetsScreen() {
         </View>
       </View>
 
-      <ScrollView
-        contentContainerStyle={[
-          styles.content,
-          isTablet && { maxWidth: 840, width: '100%', alignSelf: 'center' },
-        ]}
-        showsVerticalScrollIndicator={false}
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
+        <ScrollView
+          contentContainerStyle={[
+            styles.content,
+            isTablet && { maxWidth: 840, width: '100%', alignSelf: 'center' },
+          ]}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+        >
         {/* Ringkasan Anggaran */}
         <View style={[styles.summaryCard, { backgroundColor: palette.card, borderColor: palette.border }]}>
           <Text style={[styles.summaryTitle, { color: palette.inkMuted }]}>Total Pengeluaran dari Anggaran</Text>
@@ -296,6 +301,7 @@ export default function CategoryBudgetsScreen() {
           })
         )}
       </ScrollView>
+      </KeyboardAvoidingView>
 
       <ModernConfirmModal
         visible={confirmModal.visible}

@@ -4,6 +4,12 @@ const DATABASE_VERSION = 5;
 
 export async function migrateDbIfNeeded(db: SQLiteDatabase) {
   try {
+    // Pastikan integritas relasi tabel & performa WAL selalu aktif di setiap koneksi
+    await db.execAsync(`
+      PRAGMA foreign_keys = ON;
+      PRAGMA journal_mode = 'wal';
+    `);
+
     const result = await db.getFirstAsync<{ user_version: number }>('PRAGMA user_version');
     let currentDbVersion = result?.user_version ?? 0;
 
@@ -13,8 +19,6 @@ export async function migrateDbIfNeeded(db: SQLiteDatabase) {
 
   if (currentDbVersion === 0) {
     await db.execAsync(`
-      PRAGMA journal_mode = 'wal';
-
       CREATE TABLE IF NOT EXISTS cashbooks (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         name TEXT NOT NULL,

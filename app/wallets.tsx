@@ -120,8 +120,8 @@ export default function WalletsScreen() {
       return;
     }
 
-    const bal = parseRupiahInput(initialBalance);
-    const minBal = parseRupiahInput(minBalance);
+    const bal = Math.max(0, parseRupiahInput(initialBalance));
+    const minBal = Math.max(0, parseRupiahInput(minBalance));
     const savedName = name.trim();
     const isEdit = !!editingAccountId;
 

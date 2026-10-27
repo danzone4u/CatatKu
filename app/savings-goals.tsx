@@ -7,6 +7,8 @@ import {
   TextInput,
   Switch,
   useWindowDimensions,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useCallback, useState } from 'react';
@@ -258,14 +260,19 @@ export default function SavingsGoalsScreen() {
         </View>
       </View>
 
-      <ScrollView
-        contentContainerStyle={[
-          styles.content,
-          isTablet && { maxWidth: 840, width: '100%', alignSelf: 'center' },
-          { flexGrow: 1 },
-        ]}
-        showsVerticalScrollIndicator={false}
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
+        <ScrollView
+          contentContainerStyle={[
+            styles.content,
+            isTablet && { maxWidth: 840, width: '100%', alignSelf: 'center' },
+            { flexGrow: 1 },
+          ]}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+        >
         {/* Banner Total Tabungan */}
         <View style={[styles.summaryVaultCard, { backgroundColor: palette.card, borderColor: palette.border }]}>
           <Text style={[styles.vaultLabel, { color: palette.inkMuted }]}>Total Dana Terkunci di Tabungan</Text>
@@ -600,6 +607,7 @@ export default function SavingsGoalsScreen() {
           })
         )}
       </ScrollView>
+      </KeyboardAvoidingView>
 
       {/* DatePicker Visual Modal */}
       <DatePickerModal

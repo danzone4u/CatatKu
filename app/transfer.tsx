@@ -1,4 +1,4 @@
-import { View, Text, StyleSheet, Pressable, ScrollView, TextInput, useWindowDimensions } from 'react-native';
+import { View, Text, StyleSheet, Pressable, ScrollView, TextInput, useWindowDimensions, KeyboardAvoidingView, Platform } from 'react-native';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useCallback, useState } from 'react';
 import { useFocusEffect, Stack, router } from 'expo-router';
@@ -97,10 +97,11 @@ export default function TransferScreen() {
     const sender = accounts.find((a) => a.id === fromAccountId);
     if (sender && sender.calculated_balance < numAmount + numFee) {
       showAlert(
-        'Peringatan Saldo',
-        `Saldo ${sender.name} (${formatRupiah(sender.calculated_balance)}) tidak mencukupi untuk transfer ${formatRupiah(numAmount + numFee)}. Tetap lanjutkan?`,
-        'warning'
+        'Saldo Tidak Cukup',
+        `Saldo ${sender.name} (${formatRupiah(sender.calculated_balance)}) tidak mencukupi untuk transfer sebesar ${formatRupiah(numAmount + numFee)}.`,
+        'danger'
       );
+      return;
     }
 
     await addTransfer(db, {
@@ -142,14 +143,19 @@ export default function TransferScreen() {
         </View>
       </View>
 
-      <ScrollView
-        contentContainerStyle={[
-          styles.content,
-          isTablet && { maxWidth: 840, width: '100%', alignSelf: 'center' },
-        ]}
-        showsVerticalScrollIndicator={false}
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
-        {/* Form Transfer */}
+        <ScrollView
+          contentContainerStyle={[
+            styles.content,
+            isTablet && { maxWidth: 840, width: '100%', alignSelf: 'center' },
+          ]}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+        >
+          {/* Form Transfer */}
         <View style={[styles.card, { backgroundColor: palette.card, borderColor: palette.border }]}>
           <Text style={[styles.sectionTitle, { color: palette.ink }]}>Transfer Antar Akun</Text>
 
@@ -325,6 +331,7 @@ export default function TransferScreen() {
           ))
         )}
       </ScrollView>
+      </KeyboardAvoidingView>
 
       <ModernConfirmModal
         visible={modalState.visible}

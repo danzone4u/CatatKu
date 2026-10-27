@@ -24,6 +24,7 @@
     },
     "android": {
       "package": "com.dani.catatku",
+      "versionCode": 2,
       "adaptiveIcon": {
         "backgroundColor": "#1B6E67",
         "foregroundImage": "./assets/logo.png"

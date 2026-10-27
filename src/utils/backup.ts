@@ -18,6 +18,7 @@ export interface BackupPayload {
     debt_payments: any[];
     category_budgets: any[];
     savings_goals: any[];
+    recurring_rules?: any[];
     app_settings: any[];
   };
 }
@@ -33,6 +34,7 @@ export async function exportBackup(db: SQLiteDatabase): Promise<{ uri: string; f
     debt_payments,
     category_budgets,
     savings_goals,
+    recurring_rules,
     app_settings,
   ] = await Promise.all([
     db.getAllAsync('SELECT * FROM cashbooks'),
@@ -44,12 +46,13 @@ export async function exportBackup(db: SQLiteDatabase): Promise<{ uri: string; f
     db.getAllAsync('SELECT * FROM debt_payments'),
     db.getAllAsync('SELECT * FROM category_budgets'),
     db.getAllAsync('SELECT * FROM savings_goals'),
+    db.getAllAsync('SELECT * FROM recurring_rules'),
     db.getAllAsync('SELECT * FROM app_settings'),
   ]);
 
   const payload: BackupPayload = {
     app: 'CatatKu',
-    version: 4,
+    version: 5,
     timestamp: new Date().toISOString(),
     data: {
       cashbooks,
@@ -61,6 +64,7 @@ export async function exportBackup(db: SQLiteDatabase): Promise<{ uri: string; f
       debt_payments,
       category_budgets,
       savings_goals,
+      recurring_rules,
       app_settings,
     },
   };
@@ -103,6 +107,7 @@ export async function exportBackupToLocalStorage(
     debt_payments,
     category_budgets,
     savings_goals,
+    recurring_rules,
     app_settings,
   ] = await Promise.all([
     db.getAllAsync('SELECT * FROM cashbooks'),
@@ -114,12 +119,13 @@ export async function exportBackupToLocalStorage(
     db.getAllAsync('SELECT * FROM debt_payments'),
     db.getAllAsync('SELECT * FROM category_budgets'),
     db.getAllAsync('SELECT * FROM savings_goals'),
+    db.getAllAsync('SELECT * FROM recurring_rules'),
     db.getAllAsync('SELECT * FROM app_settings'),
   ]);
 
   const payload: BackupPayload = {
     app: 'CatatKu',
-    version: 4,
+    version: 5,
     timestamp: new Date().toISOString(),
     data: {
       cashbooks,
@@ -131,6 +137,7 @@ export async function exportBackupToLocalStorage(
       debt_payments,
       category_budgets,
       savings_goals,
+      recurring_rules,
       app_settings,
     },
   };
@@ -201,6 +208,7 @@ export async function restoreBackup(
   await db.withTransactionAsync(async () => {
     // 1. Bersihkan tabel-tabel lama
     await db.execAsync(`
+      DELETE FROM recurring_rules;
       DELETE FROM debt_payments;
       DELETE FROM debts;
       DELETE FROM transfers;
@@ -250,16 +258,18 @@ export async function restoreBackup(
     if (Array.isArray(data.accounts)) {
       for (const a of data.accounts) {
         await db.runAsync(
-          `INSERT INTO accounts (id, cashbook_id, name, type, balance, icon, color, is_default, created_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          `INSERT INTO accounts (id, cashbook_id, name, type, balance, min_balance, icon, color, is_default, sort_order, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           a.id,
           a.cashbook_id,
           a.name,
           a.type,
           a.balance ?? 0,
+          a.min_balance ?? 0,
           a.icon ?? '💵',
           a.color ?? '#16A34A',
           a.is_default ?? 0,
+          a.sort_order ?? 0,
           a.created_at ?? new Date().toISOString()
         );
       }
@@ -378,7 +388,31 @@ export async function restoreBackup(
       }
     }
 
-    // 11. Restore app_settings
+    // 11. Restore recurring_rules
+    if (Array.isArray(data.recurring_rules)) {
+      for (const rr of data.recurring_rules) {
+        await db.runAsync(
+          `INSERT INTO recurring_rules (id, cashbook_id, account_id, category_id, type, amount, note, frequency, next_due_date, last_processed, is_auto_execute, last_paid_period, is_active, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          rr.id,
+          rr.cashbook_id,
+          rr.account_id ?? null,
+          rr.category_id,
+          rr.type ?? 'expense',
+          rr.amount,
+          rr.note ?? '',
+          rr.frequency ?? 'monthly',
+          rr.next_due_date,
+          rr.last_processed ?? null,
+          rr.is_auto_execute ?? 1,
+          rr.last_paid_period ?? null,
+          rr.is_active ?? 1,
+          rr.created_at ?? new Date().toISOString()
+        );
+      }
+    }
+
+    // 12. Restore app_settings
     if (Array.isArray(data.app_settings)) {
       for (const s of data.app_settings) {
         await db.runAsync(
@@ -529,15 +563,17 @@ export async function importSingleCashbook(
     if (Array.isArray(accounts)) {
       for (const acc of accounts) {
         const insertAcc = await db.runAsync(
-          `INSERT INTO accounts (cashbook_id, name, type, balance, icon, color, is_default, created_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+          `INSERT INTO accounts (cashbook_id, name, type, balance, min_balance, icon, color, is_default, sort_order, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           newBookId,
           acc.name,
           acc.type,
           acc.balance ?? 0,
+          acc.min_balance ?? 0,
           acc.icon ?? '💵',
           acc.color ?? '#16A34A',
           acc.is_default ?? 0,
+          acc.sort_order ?? 0,
           new Date().toISOString()
         );
         accountIdMap.set(acc.id, insertAcc.lastInsertRowId);
