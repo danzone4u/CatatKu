@@ -671,8 +671,62 @@ export async function deleteTransaction(db: SQLiteDatabase, id: number): Promise
 export async function getCashbookOpeningBalance(
   db: SQLiteDatabase,
   cashbookId: number,
-  startDateStr: string
+  startDateStr: string,
+  accountId?: number | null
 ): Promise<number> {
+  if (accountId) {
+    const acc = await db.getFirstAsync<{ balance: number }>(
+      'SELECT balance FROM accounts WHERE id = ?',
+      accountId
+    );
+    const incBefore = await db.getFirstAsync<{ total: number }>(
+      'SELECT COALESCE(SUM(amount), 0) as total FROM transactions WHERE account_id = ? AND type = ? AND date < ?',
+      accountId,
+      'income',
+      startDateStr
+    );
+    const expBefore = await db.getFirstAsync<{ total: number }>(
+      'SELECT COALESCE(SUM(amount), 0) as total FROM transactions WHERE account_id = ? AND type = ? AND date < ?',
+      accountId,
+      'expense',
+      startDateStr
+    );
+    const transferInBefore = await db.getFirstAsync<{ total: number }>(
+      'SELECT COALESCE(SUM(amount), 0) as total FROM transfers WHERE to_account_id = ? AND date < ?',
+      accountId,
+      startDateStr
+    );
+    const transferOutBefore = await db.getFirstAsync<{ total: number }>(
+      'SELECT COALESCE(SUM(amount + fee), 0) as total FROM transfers WHERE from_account_id = ? AND date < ?',
+      accountId,
+      startDateStr
+    );
+    const debtOutBefore = await db.getFirstAsync<{ total: number }>(
+      `SELECT COALESCE(SUM(dp.amount), 0) as total FROM debt_payments dp
+       JOIN debts d ON dp.debt_id = d.id
+       WHERE dp.account_id = ? AND d.type = 'debt' AND dp.date < ?`,
+      accountId,
+      startDateStr
+    );
+    const debtInBefore = await db.getFirstAsync<{ total: number }>(
+      `SELECT COALESCE(SUM(dp.amount), 0) as total FROM debt_payments dp
+       JOIN debts d ON dp.debt_id = d.id
+       WHERE dp.account_id = ? AND d.type = 'receivable' AND dp.date < ?`,
+      accountId,
+      startDateStr
+    );
+
+    return (
+      (acc?.balance ?? 0) +
+      (incBefore?.total ?? 0) -
+      (expBefore?.total ?? 0) +
+      (transferInBefore?.total ?? 0) -
+      (transferOutBefore?.total ?? 0) +
+      (debtInBefore?.total ?? 0) -
+      (debtOutBefore?.total ?? 0)
+    );
+  }
+
   const initAcc = await db.getFirstAsync<{ total: number }>(
     'SELECT COALESCE(SUM(balance), 0) as total FROM accounts WHERE cashbook_id = ?',
     cashbookId

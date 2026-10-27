@@ -10,6 +10,7 @@ import {
   deleteAccount,
   setDefaultAccount,
   updateAccountOrder,
+  addTransaction,
   type AccountWithCalculatedBalance,
 } from '../src/database/queries';
 import { useCashbookStore } from '../src/stores/useCashbookStore';
@@ -17,6 +18,7 @@ import { useThemeStore } from '../src/stores/useThemeStore';
 import AccountCard from '../src/components/AccountCard';
 import EmptyState from '../src/components/EmptyState';
 import { formatRupiah, formatNumberThousand, parseRupiahInput } from '../src/utils/currency';
+import { getNowFull } from '../src/utils/date';
 import { FONTS } from '../src/constants/theme';
 import { BackArrowIcon } from '../src/components/ActionIcons';
 import { ModernConfirmModal } from '../src/components/ModernConfirmModal';
@@ -24,8 +26,10 @@ import { FINANCIAL_PRESETS, BankBadge } from '../src/components/BankBadges';
 
 const EMOJIS = [
   '💵', '🏦', '📱', '💳', '🪙', '💰', '👛', '🏧',
-  '🛡️', '📦', '📈', '🏠', '🚗', '🛍️', '👶', '🎓',
-  '✈️', '🏥', '💎', '💼',
+  '📈', '📉', '💼', '💎', '🛡️', '📦', '🏠', '🏢',
+  '🚗', '🛵', '⛽', '✈️', '🛍️', '🛒', '🍔', '☕',
+  '💻', '📶', '👶', '🐾', '🎓', '📚', '🏥', '💊',
+  '🎁', '💍', '🏝️', '🔑', '🏷️', '🧾', '🔧', '⭐',
 ];
 
 const COLORS = [
@@ -93,7 +97,7 @@ export default function WalletsScreen() {
     setEditingAccountId(acc.id);
     setName(acc.name);
     setType(acc.type);
-    setInitialBalance(formatNumberThousand(acc.balance));
+    setInitialBalance(formatNumberThousand(acc.calculated_balance));
     setMinBalance(acc.min_balance ? formatNumberThousand(acc.min_balance) : '');
     setSelectedIcon(acc.icon || '💵');
     setSelectedColor(acc.color || palette.primary);
@@ -123,10 +127,40 @@ export default function WalletsScreen() {
 
     try {
       if (editingAccountId) {
+        const existingAcc = accounts.find((a) => a.id === editingAccountId);
+        
+        // Audit Trail Akuntansi: Jika saldo diubah manual, catat mutasi penyesuaian kas
+        if (existingAcc) {
+          const diff = bal - existingAcc.calculated_balance;
+          if (diff !== 0) {
+            // Dapatkan kategori untuk rekonsiliasi
+            let reconCat = await db.getFirstAsync<{ id: number }>(
+              "SELECT id FROM categories WHERE name = 'Penyesuaian Saldo' OR name = 'Lainnya' LIMIT 1"
+            );
+            if (!reconCat) {
+              const newCat = await db.runAsync(
+                "INSERT INTO categories (name, icon, is_default) VALUES ('Penyesuaian Saldo', '⚖️', 0)"
+              );
+              reconCat = { id: newCat.lastInsertRowId };
+            }
+
+            const isSurplus = diff > 0;
+            await addTransaction(db, {
+              cashbook_id: cashbookId,
+              account_id: editingAccountId,
+              type: isSurplus ? 'income' : 'expense',
+              amount: Math.abs(diff),
+              category_id: reconCat.id,
+              note: `Penyesuaian Saldo Kas ${savedName} (${isSurplus ? 'Koreksi Lebih' : 'Koreksi Kurang'})`,
+              date: getNowFull(),
+            });
+          }
+        }
+
         await updateAccount(db, editingAccountId, {
           name: savedName,
           type,
-          balance: bal,
+          balance: existingAcc ? existingAcc.balance : bal,
           min_balance: minBal,
           icon: selectedIcon,
           color: selectedColor,
@@ -405,7 +439,9 @@ export default function WalletsScreen() {
 
               <View style={{ flexDirection: 'row', gap: 10 }}>
                 <View style={{ flex: 1 }}>
-                  <Text style={[styles.label, { color: palette.inkSecondary }]}>Saldo Awal (Rp)</Text>
+                  <Text style={[styles.label, { color: palette.inkSecondary }]}>
+                    {editingAccountId ? 'Saldo Saat Ini (Rp)' : 'Saldo Awal (Rp)'}
+                  </Text>
                   <TextInput
                     style={[
                       styles.input,

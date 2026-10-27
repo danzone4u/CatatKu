@@ -31,7 +31,9 @@ import { EditActionIcon, BackArrowIcon } from '../src/components/ActionIcons';
 import DatePickerModal from '../src/components/DatePickerModal';
 
 const GOAL_EMOJIS = [
-  '🎯', '🛡️', '🛵', '🚗', '🏠', '💻', '📱', '✈️', '💍', '🎓', '🏖️', '👶', '🏥', '💎',
+  '🎯', '🛡️', '🛵', '🚗', '🏠', '🏢', '💻', '📱',
+  '✈️', '🏖️', '💍', '🎓', '📚', '👶', '🏥', '💎',
+  '💰', '🪙', '📦', '🎁', '🛍️', '🚲', '📺', '⭐',
 ];
 
 const GOAL_COLORS = [

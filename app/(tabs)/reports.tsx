@@ -18,7 +18,13 @@ import { StatusBar } from 'expo-status-bar';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useThemeStore } from '../../src/stores/useThemeStore';
 import { useCashbookStore } from '../../src/stores/useCashbookStore';
-import { getSavingsGoals, getCashbookOpeningBalance, type SavingsGoal } from '../../src/database/queries';
+import {
+  getSavingsGoals,
+  getCashbookOpeningBalance,
+  getAccounts,
+  type SavingsGoal,
+  type AccountWithCalculatedBalance,
+} from '../../src/database/queries';
 import { formatRupiah } from '../../src/utils/currency';
 import { formatDate, formatDateOnly } from '../../src/utils/date';
 import { FONTS } from '../../src/constants/theme';
@@ -53,8 +59,11 @@ export default function ReportsScreen() {
 
   const [period, setPeriod] = useState<PeriodFilter>('monthly');
   const [currentDate, setCurrentDate] = useState(new Date());
+  const [accounts, setAccounts] = useState<AccountWithCalculatedBalance[]>([]);
+  const [selectedAccountId, setSelectedAccountId] = useState<number | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [exportingPdf, setExportingPdf] = useState(false);
+  const [exportingCsv, setExportingCsv] = useState(false);
 
   const [income, setIncome] = useState(0);
   const [expense, setExpense] = useState(0);
@@ -171,13 +180,20 @@ export default function ReportsScreen() {
       const y = currentDate.getFullYear();
       const m = currentDate.getMonth();
 
+      // Load daftar akun untuk filter dompet
+      const accList = await getAccounts(db, cashbookId);
+      setAccounts(accList);
+
+      const accFilterClause = selectedAccountId ? ' AND account_id = ?' : '';
+      const accParams = selectedAccountId ? [selectedAccountId] : [];
+
       // Query total income & expense
       const totals = await db.getAllAsync<{ type: 'income' | 'expense'; total: number }>(`
         SELECT type, SUM(amount) as total
         FROM transactions
-        WHERE cashbook_id = ? AND date >= ? AND date <= ?
+        WHERE cashbook_id = ? AND date >= ? AND date <= ?${accFilterClause}
         GROUP BY type
-      `, cashbookId, startDateStr, endDateStr);
+      `, cashbookId, startDateStr, endDateStr, ...accParams);
 
       let inc = 0;
       let exp = 0;
@@ -193,10 +209,10 @@ export default function ReportsScreen() {
         SELECT c.name as category_name, c.icon as category_icon, SUM(t.amount) as total_amount
         FROM transactions t
         JOIN categories c ON t.category_id = c.id
-        WHERE t.cashbook_id = ? AND t.type = 'expense' AND t.date >= ? AND t.date <= ?
+        WHERE t.cashbook_id = ? AND t.type = 'expense' AND t.date >= ? AND t.date <= ?${accFilterClause}
         GROUP BY t.category_id
         ORDER BY total_amount DESC
-      `, cashbookId, startDateStr, endDateStr);
+      `, cashbookId, startDateStr, endDateStr, ...accParams);
 
       const items: CategoryReport[] = catRows.map((r) => ({
         ...r,
@@ -209,10 +225,10 @@ export default function ReportsScreen() {
         SELECT c.name as category_name, c.icon as category_icon, SUM(t.amount) as total_amount
         FROM transactions t
         JOIN categories c ON t.category_id = c.id
-        WHERE t.cashbook_id = ? AND t.type = 'income' AND t.date >= ? AND t.date <= ?
+        WHERE t.cashbook_id = ? AND t.type = 'income' AND t.date >= ? AND t.date <= ?${accFilterClause}
         GROUP BY t.category_id
         ORDER BY total_amount DESC
-      `, cashbookId, startDateStr, endDateStr);
+      `, cashbookId, startDateStr, endDateStr, ...accParams);
 
       const incomeItems: CategoryReport[] = incomeCatRows.map((r) => ({
         ...r,
@@ -331,7 +347,7 @@ export default function ReportsScreen() {
     } catch (e) {
       console.warn('loadReportData error:', e);
     }
-  }, [db, cashbookId, period, currentDate, getDateRange]);
+  }, [db, cashbookId, period, currentDate, getDateRange, selectedAccountId]);
 
   useFocusEffect(
     useCallback(() => {
@@ -353,6 +369,12 @@ export default function ReportsScreen() {
       const bookName = activeCashbook ? activeCashbook.name : 'Catatan Finansial';
       const { startDateStr, endDateStr } = getDateRange();
 
+      const selectedAccount = selectedAccountId ? accounts.find((a) => a.id === selectedAccountId) : null;
+      const accountLabel = selectedAccount ? `${selectedAccount.icon} ${selectedAccount.name}` : 'Semua Dompet';
+
+      const accFilterClause = selectedAccountId ? ' AND t.account_id = ?' : '';
+      const accParams = selectedAccountId ? [selectedAccountId] : [];
+
       // Query seluruh transaksi di periode terkait (Pemasukan & Pengeluaran) kronologis dari awal ke akhir
       const periodTransactions = await db.getAllAsync<{
         id: number;
@@ -368,12 +390,12 @@ export default function ReportsScreen() {
         FROM transactions t
         JOIN categories c ON t.category_id = c.id
         LEFT JOIN accounts a ON t.account_id = a.id
-        WHERE t.cashbook_id = ? AND t.date >= ? AND t.date <= ?
+        WHERE t.cashbook_id = ? AND t.date >= ? AND t.date <= ?${accFilterClause}
         ORDER BY t.date ASC, t.id ASC
-      `, cashbookId, startDateStr, endDateStr);
+      `, cashbookId, startDateStr, endDateStr, ...accParams);
 
       // Hitung Saldo Awal Periode (Opening Balance) sesuai kaidah akuntansi buku kas
-      const openingBalance = await getCashbookOpeningBalance(db, cashbookId, startDateStr);
+      const openingBalance = await getCashbookOpeningBalance(db, cashbookId, startDateStr, selectedAccountId);
 
       let runningBalance = openingBalance;
       let totalDebit = 0;
@@ -472,7 +494,10 @@ export default function ReportsScreen() {
           <div class="header">
             <div class="logo">CatatKu</div>
             <div class="doc-title">Buku Kas & Laporan Arus Keuangan: <strong>${bookName}</strong></div>
-            <div class="subtitle">Periode Buku: <strong>${periodTitle}</strong> (${formatDateOnly(startDateStr)} s/d ${formatDateOnly(endDateStr)})</div>
+            <div class="subtitle">
+              Periode Buku: <strong>${periodTitle}</strong> (${formatDateOnly(startDateStr)} s/d ${formatDateOnly(endDateStr)})
+              &nbsp;•&nbsp; Rekening: <strong>${accountLabel}</strong>
+            </div>
           </div>
 
           <div class="card-grid">
@@ -625,6 +650,123 @@ export default function ReportsScreen() {
     }
   };
 
+  const handleExportCSV = async () => {
+    setExportingCsv(true);
+    try {
+      const isAvailable = await Sharing.isAvailableAsync();
+      const periodTitle = getPeriodLabel();
+      const bookName = activeCashbook ? activeCashbook.name : 'Catatan Finansial';
+      const { startDateStr, endDateStr } = getDateRange();
+
+      const selectedAccount = selectedAccountId ? accounts.find((a) => a.id === selectedAccountId) : null;
+      const accountLabel = selectedAccount ? `${selectedAccount.name}` : 'Semua Dompet';
+
+      const accFilterClause = selectedAccountId ? ' AND t.account_id = ?' : '';
+      const accParams = selectedAccountId ? [selectedAccountId] : [];
+
+      const periodTransactions = await db.getAllAsync<{
+        id: number;
+        type: 'income' | 'expense';
+        amount: number;
+        date: string;
+        note: string;
+        category_name: string;
+        account_name: string | null;
+      }>(`
+        SELECT t.id, t.type, t.amount, t.date, t.note, c.name as category_name, a.name as account_name
+        FROM transactions t
+        JOIN categories c ON t.category_id = c.id
+        LEFT JOIN accounts a ON t.account_id = a.id
+        WHERE t.cashbook_id = ? AND t.date >= ? AND t.date <= ?${accFilterClause}
+        ORDER BY t.date ASC, t.id ASC
+      `, cashbookId, startDateStr, endDateStr, ...accParams);
+
+      const openingBalance = await getCashbookOpeningBalance(db, cashbookId, startDateStr, selectedAccountId);
+
+      // Format CSV dengan escape tanda kutip ganda dan delimiter koma standar
+      const escapeCsv = (val: string | number | null | undefined) => {
+        if (val === null || val === undefined) return '""';
+        const str = String(val).replace(/"/g, '""');
+        return `"${str}"`;
+      };
+
+      const lines: string[] = [];
+      // BOM untuk UTF-8 agar Excel membuka file dengan encoding benar
+      lines.push('\uFEFF');
+      lines.push(`"BUKU KAS & LAPORAN ARUS KEUANGAN"`);
+      lines.push(`"Buku Kas:",${escapeCsv(bookName)}`);
+      lines.push(`"Periode:",${escapeCsv(periodTitle)}`);
+      lines.push(`"Rentang Tanggal:",${escapeCsv(`${formatDateOnly(startDateStr)} s/d ${formatDateOnly(endDateStr)}`)}`);
+      lines.push(`"Rekening / Dompet:",${escapeCsv(accountLabel)}`);
+      lines.push(`"Tanggal Ekspor:",${escapeCsv(formatDate(new Date().toISOString()))}`);
+      lines.push('');
+
+      let runningBalance = openingBalance;
+      let totalDebit = 0;
+      let totalCredit = 0;
+
+      lines.push(`"No","Tanggal","Pos / Kategori","Akun / Dompet","Catatan","Masuk (Debit)","Keluar (Kredit)","Saldo Berjalan"`);
+      lines.push(`"","${formatDateOnly(startDateStr)}","SALDO AWAL PERIODE","","","","","${openingBalance}"`);
+
+      periodTransactions.forEach((t, idx) => {
+        const isIncome = t.type === 'income';
+        const debit = isIncome ? t.amount : 0;
+        const credit = isIncome ? 0 : t.amount;
+        totalDebit += debit;
+        totalCredit += credit;
+        runningBalance += isIncome ? t.amount : -t.amount;
+
+        lines.push([
+          escapeCsv(idx + 1),
+          escapeCsv(formatDateOnly(t.date)),
+          escapeCsv(t.category_name),
+          escapeCsv(t.account_name ?? 'Dompet Utama'),
+          escapeCsv(t.note || '-'),
+          debit > 0 ? String(debit) : '0',
+          credit > 0 ? String(credit) : '0',
+          String(runningBalance),
+        ].join(','));
+      });
+
+      const endingBalance = runningBalance;
+      lines.push(`"","","TOTAL PERIODE & SALDO AKHIR","","","${totalDebit}","${totalCredit}","${endingBalance}"`);
+      lines.push('');
+      lines.push(`"RINGKASAN AKUNTANSI"`);
+      lines.push(`"Saldo Awal",${openingBalance}`);
+      lines.push(`"Total Penerimaan (Debit)",${totalDebit}`);
+      lines.push(`"Total Pengeluaran (Kredit)",${totalCredit}`);
+      lines.push(`"Surplus / Defisit Kas",${totalDebit - totalCredit}`);
+      lines.push(`"Saldo Akhir Kas",${endingBalance}`);
+
+      const csvContent = lines.join('\r\n');
+
+      const cleanBookName = (bookName || 'CatatKu')
+        .replace(/[^a-zA-Z0-9_-]/g, '_')
+        .slice(0, 30);
+      const cleanPeriod = periodTitle.replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 30);
+      const todayStr = new Date().toISOString().slice(0, 10);
+      const fileName = `Laporan_CatatKu_${cleanBookName}_${cleanPeriod}_${todayStr}.csv`;
+      const targetFile = new File(Paths.cache, fileName);
+
+      targetFile.write(csvContent);
+
+      if (isAvailable) {
+        await Sharing.shareAsync(targetFile.uri, {
+          UTI: 'public.comma-separated-values-text',
+          mimeType: 'text/csv',
+          dialogTitle: `Ekspor CSV - ${periodTitle}`,
+        });
+      } else {
+        showAlert('Info', `CSV berhasil disimpan di: ${targetFile.uri}`, 'info', '📊');
+      }
+    } catch (e) {
+      console.warn('handleExportCSV error:', e);
+      showAlert('Gagal Ekspor', 'Terjadi kendala saat menghasilkan file CSV.', 'danger');
+    } finally {
+      setExportingCsv(false);
+    }
+  };
+
   const netSavings = income - expense;
 
   // Chart Rendering Helpers
@@ -665,28 +807,46 @@ export default function ReportsScreen() {
       {/* Header */}
       <View style={[styles.header, { backgroundColor: palette.card, borderBottomColor: palette.border, paddingTop: Math.max(insets.top, 12) + 6 }]}>
         <View style={styles.headerTopRow}>
-          <View>
-            <Text style={[styles.headerTitle, { color: palette.ink }]}>Laporan Finansial</Text>
-            <Text style={[styles.headerSubtitle, { color: palette.inkMuted }]}>
+          <View style={{ flex: 1, marginRight: 8 }}>
+            <Text style={[styles.headerTitle, { color: palette.ink }]} numberOfLines={1}>Laporan Finansial</Text>
+            <Text style={[styles.headerSubtitle, { color: palette.inkMuted }]} numberOfLines={1}>
               {activeCashbook ? activeCashbook.name : 'Semua Catatan'}
             </Text>
           </View>
 
-          {/* Export PDF Button */}
-          <Pressable
-            style={({ pressed }) => [
-              styles.exportBtn,
-              { backgroundColor: palette.cardMuted, borderColor: palette.border },
-              pressed && { opacity: 0.7 },
-            ]}
-            onPress={handleExportPDF}
-            disabled={exportingPdf}
-          >
-            <Text style={styles.exportBtnIcon}>📄</Text>
-            <Text style={[styles.exportBtnText, { color: palette.primary }]}>
-              {exportingPdf ? 'Mengekspor...' : 'Cetak PDF'}
-            </Text>
-          </Pressable>
+          <View style={{ flexDirection: 'row', gap: 6, alignItems: 'center' }}>
+            {/* Export CSV Button */}
+            <Pressable
+              style={({ pressed }) => [
+                styles.exportBtn,
+                { backgroundColor: palette.cardMuted, borderColor: palette.border },
+                pressed && { opacity: 0.7 },
+              ]}
+              onPress={handleExportCSV}
+              disabled={exportingCsv}
+            >
+              <Text style={styles.exportBtnIcon}>📊</Text>
+              <Text style={[styles.exportBtnText, { color: palette.primary }]}>
+                {exportingCsv ? '...' : 'CSV'}
+              </Text>
+            </Pressable>
+
+            {/* Export PDF Button */}
+            <Pressable
+              style={({ pressed }) => [
+                styles.exportBtn,
+                { backgroundColor: palette.cardMuted, borderColor: palette.border },
+                pressed && { opacity: 0.7 },
+              ]}
+              onPress={handleExportPDF}
+              disabled={exportingPdf}
+            >
+              <Text style={styles.exportBtnIcon}>📄</Text>
+              <Text style={[styles.exportBtnText, { color: palette.primary }]}>
+                {exportingPdf ? '...' : 'PDF'}
+              </Text>
+            </Pressable>
+          </View>
         </View>
 
         {/* Filter Pills */}
@@ -717,6 +877,65 @@ export default function ReportsScreen() {
             );
           })}
         </View>
+
+        {/* Account Filter Pills (Chips) */}
+        {accounts.length > 0 && (
+          <View style={styles.accountChipsRow}>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.accountChipsScroll}
+            >
+              <Pressable
+                style={[
+                  styles.accountChip,
+                  { backgroundColor: palette.cardMuted, borderColor: palette.border },
+                  selectedAccountId === null && {
+                    backgroundColor: palette.primary,
+                    borderColor: palette.primary,
+                  },
+                ]}
+                onPress={() => setSelectedAccountId(null)}
+              >
+                <Text
+                  style={[
+                    styles.accountChipText,
+                    { color: palette.inkSecondary },
+                    selectedAccountId === null && { color: '#FFFFFF', fontWeight: '800' },
+                  ]}
+                >
+                  Semua Dompet
+                </Text>
+              </Pressable>
+              {accounts.map((acc) => {
+                const active = selectedAccountId === acc.id;
+                return (
+                  <Pressable
+                    key={acc.id}
+                    style={[
+                      styles.accountChip,
+                      { backgroundColor: palette.cardMuted, borderColor: palette.border },
+                      active && { backgroundColor: palette.primary, borderColor: palette.primary },
+                    ]}
+                    onPress={() => setSelectedAccountId(acc.id)}
+                  >
+                    <Text style={styles.accountChipIcon}>{acc.icon || '💳'}</Text>
+                    <Text
+                      style={[
+                        styles.accountChipText,
+                        { color: palette.inkSecondary },
+                        active && { color: '#FFFFFF', fontWeight: '800' },
+                      ]}
+                      numberOfLines={1}
+                    >
+                      {acc.name}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </ScrollView>
+          </View>
+        )}
 
         {/* Date Navigator */}
         <View style={styles.navigatorRow}>
@@ -1086,6 +1305,30 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   filterPillText: {
+    fontFamily: FONTS.sansBold,
+    fontSize: 11,
+  },
+  accountChipsRow: {
+    marginBottom: 12,
+  },
+  accountChipsScroll: {
+    flexDirection: 'row',
+    gap: 8,
+    alignItems: 'center',
+  },
+  accountChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
+    borderWidth: 1,
+  },
+  accountChipIcon: {
+    fontSize: 12,
+  },
+  accountChipText: {
     fontFamily: FONTS.sansBold,
     fontSize: 11,
   },
