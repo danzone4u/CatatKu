@@ -29,27 +29,31 @@ export async function generateAndSharePdfReport(params: {
 
   const transactionRows = sortedTransactions
     .map((t, index) => {
+      const isVoid = Number(t.is_void) === 1;
       const isIncome = t.type === 'income';
-      const debit = isIncome ? t.amount : 0;
-      const credit = isIncome ? 0 : t.amount;
+      const debit = isVoid ? 0 : (isIncome ? t.amount : 0);
+      const credit = isVoid ? 0 : (isIncome ? 0 : t.amount);
       totalDebit += debit;
       totalCredit += credit;
-      runningBalance += isIncome ? t.amount : -t.amount;
+      runningBalance += isVoid ? 0 : (isIncome ? t.amount : -t.amount);
 
       return `
-    <tr>
+    <tr style="${isVoid ? 'background: #FEF2F2; opacity: 0.65;' : ''}">
       <td style="text-align: center; color: #64748B;">${index + 1}</td>
       <td style="white-space: nowrap;">${formatDateOnly(t.date)}</td>
       <td>
-        <div style="font-weight: 700; color: #0F172A;">${t.category_icon} ${t.category_name}</div>
-        ${t.note ? `<div style="font-size: 10px; color: #64748B; margin-top: 1px;">${t.note}</div>` : ''}
+        <div style="font-weight: 700; color: #0F172A; ${isVoid ? 'text-decoration: line-through;' : ''}">
+          ${t.category_icon} ${t.category_name}
+          ${isVoid ? '<span style="display:inline-block; font-size:9px; background:#DC2626; color:#FFF; font-weight:800; padding:1px 5px; border-radius:4px; margin-left:4px;">BATAL</span>' : ''}
+        </div>
+        ${t.note ? `<div style="font-size: 10px; color: #64748B; margin-top: 1px; ${isVoid ? 'text-decoration: line-through;' : ''}">${t.note}</div>` : ''}
       </td>
       <td style="color: #475569; white-space: nowrap;">${t.account_name ?? 'Dompet Utama'}</td>
-      <td style="text-align: right; font-weight: 700; color: #059669; white-space: nowrap;">
-        ${debit > 0 ? formatRupiah(debit) : '-'}
+      <td style="text-align: right; font-weight: 700; color: #059669; white-space: nowrap; ${isVoid ? 'text-decoration: line-through;' : ''}">
+        ${debit > 0 ? formatRupiah(debit) : (isVoid && isIncome ? formatRupiah(t.amount) : '-')}
       </td>
-      <td style="text-align: right; font-weight: 700; color: #DC2626; white-space: nowrap;">
-        ${credit > 0 ? formatRupiah(credit) : '-'}
+      <td style="text-align: right; font-weight: 700; color: #DC2626; white-space: nowrap; ${isVoid ? 'text-decoration: line-through;' : ''}">
+        ${credit > 0 ? formatRupiah(credit) : (isVoid && !isIncome ? formatRupiah(t.amount) : '-')}
       </td>
       <td style="text-align: right; font-weight: 800; color: #0F172A; white-space: nowrap;">
         ${formatRupiah(runningBalance)}

@@ -49,6 +49,9 @@ export interface Transaction {
   note: string;
   date: string;
   receipt_image_uri?: string | null;
+  is_void: number;
+  void_reason?: string | null;
+  voided_at?: string | null;
   created_at: string;
 }
 
@@ -186,15 +189,15 @@ export async function getCashbooksWithStats(db: SQLiteDatabase): Promise<Cashboo
 
     for (const b of books) {
       const income = await db.getFirstAsync<{ total: number }>(
-        'SELECT COALESCE(SUM(amount), 0) as total FROM transactions WHERE cashbook_id = ? AND type = ?',
+        'SELECT COALESCE(SUM(amount), 0) as total FROM transactions WHERE cashbook_id = ? AND type = ? AND is_void = 0',
         b.id, 'income'
       );
       const expense = await db.getFirstAsync<{ total: number }>(
-        'SELECT COALESCE(SUM(amount), 0) as total FROM transactions WHERE cashbook_id = ? AND type = ?',
+        'SELECT COALESCE(SUM(amount), 0) as total FROM transactions WHERE cashbook_id = ? AND type = ? AND is_void = 0',
         b.id, 'expense'
       );
       const count = await db.getFirstAsync<{ count: number }>(
-        'SELECT COUNT(*) as count FROM transactions WHERE cashbook_id = ?',
+        'SELECT COUNT(*) as count FROM transactions WHERE cashbook_id = ? AND is_void = 0',
         b.id
       );
 
@@ -205,7 +208,7 @@ export async function getCashbooksWithStats(db: SQLiteDatabase): Promise<Cashboo
            COALESCE(SUM(CASE WHEN type = 'expense' THEN amount ELSE 0 END), 0)
          ) as daily_net
          FROM transactions
-         WHERE cashbook_id = ?
+         WHERE cashbook_id = ? AND is_void = 0
          GROUP BY date
          ORDER BY date DESC
          LIMIT 7`,
@@ -242,11 +245,11 @@ export async function getTotalAllBalance(
     let expenseQuery = 'SELECT COALESCE(SUM(t.amount), 0) as total FROM transactions t';
 
     if (onlyPersonal) {
-      incomeQuery += " JOIN cashbooks c ON t.cashbook_id = c.id WHERE c.type = 'personal' AND t.type = 'income'";
-      expenseQuery += " JOIN cashbooks c ON t.cashbook_id = c.id WHERE c.type = 'personal' AND t.type = 'expense'";
+      incomeQuery += " JOIN cashbooks c ON t.cashbook_id = c.id WHERE c.type = 'personal' AND t.type = 'income' AND t.is_void = 0";
+      expenseQuery += " JOIN cashbooks c ON t.cashbook_id = c.id WHERE c.type = 'personal' AND t.type = 'expense' AND t.is_void = 0";
     } else {
-      incomeQuery += " WHERE t.type = 'income'";
-      expenseQuery += " WHERE t.type = 'expense'";
+      incomeQuery += " WHERE t.type = 'income' AND t.is_void = 0";
+      expenseQuery += " WHERE t.type = 'expense' AND t.is_void = 0";
     }
 
     const income = await db.getFirstAsync<{ total: number }>(incomeQuery);
@@ -391,11 +394,11 @@ export async function getAccounts(db: SQLiteDatabase, cashbookId: number): Promi
   for (const acc of accounts) {
     // Hitung saldo: Saldo awal + Pemasukan - Pengeluaran + Transfer Masuk - Transfer Keluar (+ Fee) + Cicilan Piutang - Cicilan Hutang
     const income = await db.getFirstAsync<{ total: number }>(
-      'SELECT COALESCE(SUM(amount), 0) as total FROM transactions WHERE account_id = ? AND type = ?',
+      'SELECT COALESCE(SUM(amount), 0) as total FROM transactions WHERE account_id = ? AND type = ? AND is_void = 0',
       acc.id, 'income'
     );
     const expense = await db.getFirstAsync<{ total: number }>(
-      'SELECT COALESCE(SUM(amount), 0) as total FROM transactions WHERE account_id = ? AND type = ?',
+      'SELECT COALESCE(SUM(amount), 0) as total FROM transactions WHERE account_id = ? AND type = ? AND is_void = 0',
       acc.id, 'expense'
     );
     const transferIn = await db.getFirstAsync<{ total: number }>(
@@ -558,6 +561,7 @@ export async function getTransactions(
     minAmount?: number;
     maxAmount?: number;
     search?: string;
+    includeVoid?: boolean;
   }
 ): Promise<TransactionWithCategory[]> {
   let query = `
@@ -569,6 +573,10 @@ export async function getTransactions(
     WHERE t.cashbook_id = ?
   `;
   const params: (string | number)[] = [cashbookId];
+
+  if (!filters?.includeVoid) {
+    // Default tetap tampilkan transaksi aktif & void agar jejak audit terlihat di riwayat
+  }
 
   if (filters?.type) {
     query += ' AND t.type = ?';
@@ -663,8 +671,22 @@ export async function updateTransaction(
   );
 }
 
+export async function voidTransaction(
+  db: SQLiteDatabase,
+  id: number,
+  reason?: string
+): Promise<void> {
+  await db.runAsync(
+    `UPDATE transactions 
+     SET is_void = 1, void_reason = ?, voided_at = datetime('now') 
+     WHERE id = ?`,
+    reason?.trim() || 'Dibatalkan oleh pengguna',
+    id
+  );
+}
+
 export async function deleteTransaction(db: SQLiteDatabase, id: number): Promise<void> {
-  await db.runAsync('DELETE FROM transactions WHERE id = ?', id);
+  await voidTransaction(db, id);
 }
 
 // ─── Summary (Per Cashbook) ───
@@ -680,13 +702,13 @@ export async function getCashbookOpeningBalance(
       accountId
     );
     const incBefore = await db.getFirstAsync<{ total: number }>(
-      'SELECT COALESCE(SUM(amount), 0) as total FROM transactions WHERE account_id = ? AND type = ? AND date < ?',
+      'SELECT COALESCE(SUM(amount), 0) as total FROM transactions WHERE account_id = ? AND type = ? AND date < ? AND is_void = 0',
       accountId,
       'income',
       startDateStr
     );
     const expBefore = await db.getFirstAsync<{ total: number }>(
-      'SELECT COALESCE(SUM(amount), 0) as total FROM transactions WHERE account_id = ? AND type = ? AND date < ?',
+      'SELECT COALESCE(SUM(amount), 0) as total FROM transactions WHERE account_id = ? AND type = ? AND date < ? AND is_void = 0',
       accountId,
       'expense',
       startDateStr
@@ -732,13 +754,13 @@ export async function getCashbookOpeningBalance(
     cashbookId
   );
   const incBefore = await db.getFirstAsync<{ total: number }>(
-    'SELECT COALESCE(SUM(amount), 0) as total FROM transactions WHERE cashbook_id = ? AND type = ? AND date < ?',
+    'SELECT COALESCE(SUM(amount), 0) as total FROM transactions WHERE cashbook_id = ? AND type = ? AND date < ? AND is_void = 0',
     cashbookId,
     'income',
     startDateStr
   );
   const expBefore = await db.getFirstAsync<{ total: number }>(
-    'SELECT COALESCE(SUM(amount), 0) as total FROM transactions WHERE cashbook_id = ? AND type = ? AND date < ?',
+    'SELECT COALESCE(SUM(amount), 0) as total FROM transactions WHERE cashbook_id = ? AND type = ? AND date < ? AND is_void = 0',
     cashbookId,
     'expense',
     startDateStr
@@ -783,11 +805,11 @@ export async function getMonthlySummary(
   const endDate = `${year}-${String(month).padStart(2, '0')}-31`;
 
   const income = await db.getFirstAsync<{ total: number }>(
-    'SELECT COALESCE(SUM(amount), 0) as total FROM transactions WHERE cashbook_id = ? AND type = ? AND date >= ? AND date <= ?',
+    'SELECT COALESCE(SUM(amount), 0) as total FROM transactions WHERE cashbook_id = ? AND type = ? AND date >= ? AND date <= ? AND is_void = 0',
     cashbookId, 'income', startDate, endDate
   );
   const expense = await db.getFirstAsync<{ total: number }>(
-    'SELECT COALESCE(SUM(amount), 0) as total FROM transactions WHERE cashbook_id = ? AND type = ? AND date >= ? AND date <= ?',
+    'SELECT COALESCE(SUM(amount), 0) as total FROM transactions WHERE cashbook_id = ? AND type = ? AND date >= ? AND date <= ? AND is_void = 0',
     cashbookId, 'expense', startDate, endDate
   );
 
@@ -815,7 +837,7 @@ export async function getCategoryBreakdown(
     `SELECT c.id as category_id, c.name as category_name, c.icon as category_icon, SUM(t.amount) as total
      FROM transactions t
      JOIN categories c ON t.category_id = c.id
-     WHERE t.cashbook_id = ? AND t.type = ? AND t.date >= ? AND t.date <= ?
+     WHERE t.cashbook_id = ? AND t.type = ? AND t.date >= ? AND t.date <= ? AND t.is_void = 0
      GROUP BY c.id
      ORDER BY total DESC`,
     cashbookId, type, startDate, endDate
@@ -992,6 +1014,7 @@ export async function getCategoryBudgets(
              WHERE cashbook_id = cb.cashbook_id
                AND category_id = cb.category_id
                AND type = 'expense'
+               AND is_void = 0
                AND date >= ? AND date <= ?
            ), 0) as spent_amount
     FROM category_budgets cb

@@ -19,6 +19,7 @@ import {
   getCategories,
   addTransaction,
   updateTransaction,
+  voidTransaction,
   getAccounts,
   type Category,
   type AccountWithCalculatedBalance,
@@ -67,6 +68,8 @@ export default function AddTransactionScreen() {
   const [date, setDate] = useState(getNowFull());
   const [categories, setCategories] = useState<Category[]>([]);
   const [receiptImage, setReceiptImage] = useState<string | null>(null);
+  const [isVoided, setIsVoided] = useState(false);
+  const [showVoidConfirm, setShowVoidConfirm] = useState(false);
 
   // Modal states
   const [showReceiptModal, setShowReceiptModal] = useState(false);
@@ -124,6 +127,7 @@ export default function AddTransactionScreen() {
             note: string;
             date: string;
             receipt_image_uri?: string | null;
+            is_void?: number;
           }>('SELECT * FROM transactions WHERE id = ?', parseInt(params.id!, 10));
           if (row && isMounted) {
             setSelectedAccountId(row.account_id);
@@ -133,6 +137,7 @@ export default function AddTransactionScreen() {
             setNote(row.note ?? '');
             setDate(row.date);
             setReceiptImage(row.receipt_image_uri ?? null);
+            setIsVoided(Number(row.is_void) === 1);
           }
         }
       }
@@ -233,6 +238,17 @@ export default function AddTransactionScreen() {
       router.back();
     } catch {
       showAlert('Error', 'Gagal menyimpan transaksi', 'danger');
+    }
+  }
+
+  async function handleVoidTransaction() {
+    if (!params.id) return;
+    try {
+      await voidTransaction(db, parseInt(params.id, 10));
+      setShowVoidConfirm(false);
+      router.back();
+    } catch {
+      showAlert('Gagal', 'Terjadi kendala saat membatalkan transaksi.', 'danger');
     }
   }
 
@@ -544,6 +560,20 @@ export default function AddTransactionScreen() {
         >
           <Text style={styles.saveBtnText}>{isEdit ? 'Simpan Perubahan' : 'Simpan Transaksi'}</Text>
         </Pressable>
+
+        {/* Batalkan Transaksi (Void) jika sedang edit dan belum void */}
+        {isEdit && !isVoided && (
+          <Pressable
+            style={({ pressed }) => [
+              styles.voidBtn,
+              { backgroundColor: isDarkMode ? '#2D1217' : '#FEF2F2', borderColor: '#FECACA' },
+              pressed && { opacity: 0.8 },
+            ]}
+            onPress={() => setShowVoidConfirm(true)}
+          >
+            <Text style={styles.voidBtnText}>🚫 Batalkan</Text>
+          </Pressable>
+        )}
       </ScrollView>
     </KeyboardAvoidingView>
 
@@ -651,6 +681,19 @@ export default function AddTransactionScreen() {
         confirmText="Mengerti"
         cancelText=""
         onConfirm={() => setModalAlert((prev) => ({ ...prev, visible: false }))}
+      />
+
+      {/* Modern Confirm Modal: Batalkan Transaksi */}
+      <ModernConfirmModal
+        visible={showVoidConfirm}
+        type="danger"
+        icon="🚫"
+        title="Batalkan Transaksi?"
+        message="Sesuai prinsip pembukuan akuntansi, riwayat transaksi tidak dihapus melainkan ditandai BATAL (Void). Saldo akun akan dikembalikan dan transaksi tidak lagi dihitung dalam total laporan."
+        confirmText="Batalkan"
+        cancelText="Kembali"
+        onConfirm={handleVoidTransaction}
+        onCancel={() => setShowVoidConfirm(false)}
       />
     </View>
   );
@@ -966,6 +1009,19 @@ const styles = StyleSheet.create({
     fontFamily: FONTS.sansBold,
     fontSize: 15,
     color: '#FAF8F5',
+  },
+  voidBtn: {
+    paddingVertical: 12,
+    borderRadius: 14,
+    alignItems: 'center',
+    marginTop: 10,
+    borderWidth: 1,
+  },
+  voidBtnText: {
+    fontFamily: FONTS.sansBold,
+    fontSize: 14,
+    color: '#DC2626',
+    fontWeight: '700',
   },
   sheetBackdrop: {
     flex: 1,

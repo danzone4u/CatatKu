@@ -385,8 +385,9 @@ export default function ReportsScreen() {
         category_name: string;
         category_icon: string;
         account_name: string | null;
+        is_void: number;
       }>(`
-        SELECT t.id, t.type, t.amount, t.date, t.note, c.name as category_name, c.icon as category_icon, a.name as account_name
+        SELECT t.id, t.type, t.amount, t.date, t.note, t.is_void, c.name as category_name, c.icon as category_icon, a.name as account_name
         FROM transactions t
         JOIN categories c ON t.category_id = c.id
         LEFT JOIN accounts a ON t.account_id = a.id
@@ -402,27 +403,31 @@ export default function ReportsScreen() {
       let totalCredit = 0;
 
       const transactionRows = periodTransactions.map((t, idx) => {
+        const isVoid = Number(t.is_void) === 1;
         const isIncome = t.type === 'income';
-        const debit = isIncome ? t.amount : 0;
-        const credit = isIncome ? 0 : t.amount;
+        const debit = isVoid ? 0 : (isIncome ? t.amount : 0);
+        const credit = isVoid ? 0 : (isIncome ? 0 : t.amount);
         totalDebit += debit;
         totalCredit += credit;
-        runningBalance += isIncome ? t.amount : -t.amount;
+        runningBalance += isVoid ? 0 : (isIncome ? t.amount : -t.amount);
 
         return `
-          <tr>
+          <tr style="${isVoid ? 'background: #FEF2F2; opacity: 0.65;' : ''}">
             <td style="text-align: center; padding: 7px 5px; border-bottom: 1px solid #E2E8F0; color: #64748B;">${idx + 1}</td>
             <td style="padding: 7px 8px; border-bottom: 1px solid #E2E8F0; white-space: nowrap; font-size: 11px;">${formatDateOnly(t.date)}</td>
             <td style="padding: 7px 8px; border-bottom: 1px solid #E2E8F0;">
-              <div style="font-weight: 700; color: #0F172A;">${t.category_icon} ${t.category_name}</div>
-              ${t.note ? `<div style="font-size: 10px; color: #64748B; margin-top: 1px;">${t.note}</div>` : ''}
+              <div style="font-weight: 700; color: #0F172A; ${isVoid ? 'text-decoration: line-through;' : ''}">
+                ${t.category_icon} ${t.category_name}
+                ${isVoid ? '<span style="display:inline-block; font-size:9px; background:#DC2626; color:#FFF; font-weight:800; padding:1px 5px; border-radius:4px; margin-left:4px;">BATAL</span>' : ''}
+              </div>
+              ${t.note ? `<div style="font-size: 10px; color: #64748B; margin-top: 1px; ${isVoid ? 'text-decoration: line-through;' : ''}">${t.note}</div>` : ''}
             </td>
             <td style="padding: 7px 8px; border-bottom: 1px solid #E2E8F0; color: #475569; font-size: 11px; white-space: nowrap;">${t.account_name ?? 'Dompet Utama'}</td>
-            <td style="padding: 7px 8px; border-bottom: 1px solid #E2E8F0; text-align: right; color: #059669; font-weight: 700; white-space: nowrap;">
-              ${debit > 0 ? formatRupiah(debit) : '-'}
+            <td style="padding: 7px 8px; border-bottom: 1px solid #E2E8F0; text-align: right; color: #059669; font-weight: 700; white-space: nowrap; ${isVoid ? 'text-decoration: line-through;' : ''}">
+              ${debit > 0 ? formatRupiah(debit) : (isVoid && isIncome ? formatRupiah(t.amount) : '-')}
             </td>
-            <td style="padding: 7px 8px; border-bottom: 1px solid #E2E8F0; text-align: right; color: #DC2626; font-weight: 700; white-space: nowrap;">
-              ${credit > 0 ? formatRupiah(credit) : '-'}
+            <td style="padding: 7px 8px; border-bottom: 1px solid #E2E8F0; text-align: right; color: #DC2626; font-weight: 700; white-space: nowrap; ${isVoid ? 'text-decoration: line-through;' : ''}">
+              ${credit > 0 ? formatRupiah(credit) : (isVoid && !isIncome ? formatRupiah(t.amount) : '-')}
             </td>
             <td style="padding: 7px 8px; border-bottom: 1px solid #E2E8F0; text-align: right; font-weight: 800; color: #0F172A; white-space: nowrap;">
               ${formatRupiah(runningBalance)}
@@ -672,8 +677,9 @@ export default function ReportsScreen() {
         note: string;
         category_name: string;
         account_name: string | null;
+        is_void: number;
       }>(`
-        SELECT t.id, t.type, t.amount, t.date, t.note, c.name as category_name, a.name as account_name
+        SELECT t.id, t.type, t.amount, t.date, t.note, t.is_void, c.name as category_name, a.name as account_name
         FROM transactions t
         JOIN categories c ON t.category_id = c.id
         LEFT JOIN accounts a ON t.account_id = a.id
@@ -705,31 +711,33 @@ export default function ReportsScreen() {
       let totalDebit = 0;
       let totalCredit = 0;
 
-      lines.push(`"No","Tanggal","Pos / Kategori","Akun / Dompet","Catatan","Masuk (Debit)","Keluar (Kredit)","Saldo Berjalan"`);
-      lines.push(`"","${formatDateOnly(startDateStr)}","SALDO AWAL PERIODE","","","","","${openingBalance}"`);
+      lines.push(`"No","Tanggal","Status","Pos / Kategori","Akun / Dompet","Catatan","Masuk (Debit)","Keluar (Kredit)","Saldo Berjalan"`);
+      lines.push(`"","${formatDateOnly(startDateStr)}","AKTIF","SALDO AWAL PERIODE","","","","","${openingBalance}"`);
 
       periodTransactions.forEach((t, idx) => {
+        const isVoid = Number(t.is_void) === 1;
         const isIncome = t.type === 'income';
-        const debit = isIncome ? t.amount : 0;
-        const credit = isIncome ? 0 : t.amount;
+        const debit = isVoid ? 0 : (isIncome ? t.amount : 0);
+        const credit = isVoid ? 0 : (isIncome ? 0 : t.amount);
         totalDebit += debit;
         totalCredit += credit;
-        runningBalance += isIncome ? t.amount : -t.amount;
+        runningBalance += isVoid ? 0 : (isIncome ? t.amount : -t.amount);
 
         lines.push([
           escapeCsv(idx + 1),
           escapeCsv(formatDateOnly(t.date)),
+          escapeCsv(isVoid ? 'BATAL' : 'AKTIF'),
           escapeCsv(t.category_name),
           escapeCsv(t.account_name ?? 'Dompet Utama'),
           escapeCsv(t.note || '-'),
-          debit > 0 ? String(debit) : '0',
-          credit > 0 ? String(credit) : '0',
+          debit > 0 ? String(debit) : (isVoid && isIncome ? `(${t.amount})` : '0'),
+          credit > 0 ? String(credit) : (isVoid && !isIncome ? `(${t.amount})` : '0'),
           String(runningBalance),
         ].join(','));
       });
 
       const endingBalance = runningBalance;
-      lines.push(`"","","TOTAL PERIODE & SALDO AKHIR","","","${totalDebit}","${totalCredit}","${endingBalance}"`);
+      lines.push(`"","","","TOTAL PERIODE & SALDO AKHIR","","","${totalDebit}","${totalCredit}","${endingBalance}"`);
       lines.push('');
       lines.push(`"RINGKASAN AKUNTANSI"`);
       lines.push(`"Saldo Awal",${openingBalance}`);

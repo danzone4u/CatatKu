@@ -13,6 +13,7 @@ interface Props extends TransactionWithCategory {
 
 export default function TransactionCard(props: Props) {
   const isIncome = props.type === 'income';
+  const isVoid = Number(props.is_void) === 1;
   const palette = useThemeStore((s) => s.palette);
   const isDarkMode = useThemeStore((s) => s.isDarkMode);
 
@@ -22,7 +23,8 @@ export default function TransactionCard(props: Props) {
         styles.card,
         {
           backgroundColor: palette.card,
-          borderColor: palette.border,
+          borderColor: isVoid ? (isDarkMode ? 'rgba(239, 68, 68, 0.2)' : 'rgba(239, 68, 68, 0.15)') : palette.border,
+          opacity: isVoid ? 0.72 : 1,
         },
         pressed && [styles.pressed, { backgroundColor: isDarkMode ? '#172735' : '#FAFCFB' }],
       ]}
@@ -33,25 +35,57 @@ export default function TransactionCard(props: Props) {
         style={[
           styles.iconContainer,
           {
-            backgroundColor: isIncome
+            backgroundColor: isVoid
+              ? isDarkMode ? '#334155' : '#F1F5F9'
+              : isIncome
               ? isDarkMode ? '#064E3B' : '#F0FDF4'
               : isDarkMode ? '#4C0519' : '#FEF2F2',
           },
         ]}
       >
-        <Text style={styles.icon}>{props.category_icon || (isIncome ? '💰' : '💸')}</Text>
+        <Text style={[styles.icon, isVoid && { opacity: 0.5 }]}>
+          {isVoid ? '🚫' : (props.category_icon || (isIncome ? '💰' : '💸'))}
+        </Text>
       </View>
 
       <View style={styles.details}>
         <View style={styles.titleRow}>
-          <Text style={[styles.categoryName, { color: palette.ink }]} numberOfLines={1} allowFontScaling={false}>
-            {props.category_name}
-          </Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1, marginRight: 8 }}>
+            <Text
+              style={[
+                styles.categoryName,
+                { color: isVoid ? palette.inkMuted : palette.ink },
+                isVoid && styles.strikethrough,
+              ]}
+              numberOfLines={1}
+              allowFontScaling={false}
+            >
+              {props.category_name}
+            </Text>
+            {isVoid && (
+              <View style={styles.voidBadge}>
+                <Text style={styles.voidBadgeText}>BATAL</Text>
+              </View>
+            )}
+          </View>
           <View style={styles.rightActionRow}>
-            <Text style={[styles.amount, { color: isIncome ? palette.income : palette.expense }]} allowFontScaling={false}>
+            <Text
+              style={[
+                styles.amount,
+                {
+                  color: isVoid
+                    ? palette.inkMuted
+                    : isIncome
+                    ? palette.income
+                    : palette.expense,
+                },
+                isVoid && styles.strikethrough,
+              ]}
+              allowFontScaling={false}
+            >
               {isIncome ? '+' : '-'}{formatRupiah(props.amount)}
             </Text>
-            {props.onDelete && (
+            {props.onDelete && !isVoid && (
               <Pressable
                 hitSlop={8}
                 style={({ pressed }) => [
@@ -90,7 +124,15 @@ export default function TransactionCard(props: Props) {
             )}
           </View>
           {props.note ? (
-            <Text style={[styles.note, { color: palette.inkMuted }]} numberOfLines={1} allowFontScaling={false}>
+            <Text
+              style={[
+                styles.note,
+                { color: palette.inkMuted },
+                isVoid && styles.strikethrough,
+              ]}
+              numberOfLines={1}
+              allowFontScaling={false}
+            >
               {props.note}
             </Text>
           ) : null}
@@ -158,6 +200,24 @@ const styles = StyleSheet.create({
     fontFamily: FONTS.serifTitle,
     fontSize: 15,
     fontWeight: '800',
+  },
+  strikethrough: {
+    textDecorationLine: 'line-through',
+  },
+  voidBadge: {
+    paddingHorizontal: 6,
+    paddingVertical: 1.5,
+    borderRadius: 6,
+    backgroundColor: '#FEE2E2',
+    borderWidth: 1,
+    borderColor: '#FCA5A5',
+  },
+  voidBadgeText: {
+    fontFamily: FONTS.sansBold,
+    fontSize: 9,
+    fontWeight: '800',
+    color: '#DC2626',
+    letterSpacing: 0.5,
   },
   timeRow: {
     marginTop: 2,

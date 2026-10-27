@@ -63,6 +63,9 @@ export async function migrateDbIfNeeded(db: SQLiteDatabase) {
         note TEXT DEFAULT '',
         date TEXT NOT NULL,
         receipt_image_uri TEXT,
+        is_void INTEGER NOT NULL DEFAULT 0,
+        void_reason TEXT DEFAULT NULL,
+        voided_at TEXT DEFAULT NULL,
         created_at TEXT NOT NULL DEFAULT (datetime('now')),
         FOREIGN KEY (cashbook_id) REFERENCES cashbooks(id) ON DELETE CASCADE,
         FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE SET NULL,
@@ -308,6 +311,18 @@ export async function migrateDbIfNeeded(db: SQLiteDatabase) {
 
   try {
     await db.execAsync('ALTER TABLE accounts ADD COLUMN min_balance REAL NOT NULL DEFAULT 0;');
+  } catch {}
+
+  try {
+    await db.execAsync('ALTER TABLE transactions ADD COLUMN is_void INTEGER NOT NULL DEFAULT 0;');
+  } catch {}
+
+  try {
+    await db.execAsync('ALTER TABLE transactions ADD COLUMN void_reason TEXT DEFAULT NULL;');
+  } catch {}
+
+  try {
+    await db.execAsync('ALTER TABLE transactions ADD COLUMN voided_at TEXT DEFAULT NULL;');
   } catch {}
 
   // Migrasi aman data dari monthly_bills lama ke recurring_rules jika ada

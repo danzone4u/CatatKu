@@ -279,8 +279,8 @@ export async function restoreBackup(
     if (Array.isArray(data.transactions)) {
       for (const t of data.transactions) {
         await db.runAsync(
-          `INSERT INTO transactions (id, cashbook_id, account_id, type, amount, category_id, note, date, receipt_image_uri, created_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          `INSERT INTO transactions (id, cashbook_id, account_id, type, amount, category_id, note, date, receipt_image_uri, is_void, void_reason, voided_at, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           t.id,
           t.cashbook_id,
           t.account_id ?? null,
@@ -290,6 +290,9 @@ export async function restoreBackup(
           t.note ?? '',
           t.date,
           t.receipt_image_uri ?? null,
+          t.is_void ?? 0,
+          t.void_reason ?? null,
+          t.voided_at ?? null,
           t.created_at ?? new Date().toISOString()
         );
       }
