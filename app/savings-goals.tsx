@@ -13,6 +13,7 @@ import {
 import { useSQLiteContext } from 'expo-sqlite';
 import { useCallback, useState } from 'react';
 import { useFocusEffect, Stack, router } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   getSavingsGoals,
   addSavingsGoal,
@@ -44,6 +45,7 @@ const GOAL_COLORS = [
 ];
 
 export default function SavingsGoalsScreen() {
+  const insets = useSafeAreaInsets();
   const db = useSQLiteContext();
   const { width } = useWindowDimensions();
   const isTablet = width >= 600;
@@ -268,7 +270,7 @@ export default function SavingsGoalsScreen() {
           contentContainerStyle={[
             styles.content,
             isTablet && { maxWidth: 840, width: '100%', alignSelf: 'center' },
-            { flexGrow: 1 },
+            { flexGrow: 1, paddingBottom: Math.max(insets.bottom, 16) + 32 },
           ]}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"

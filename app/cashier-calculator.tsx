@@ -1,6 +1,7 @@
 import { View, Text, StyleSheet, Pressable, ScrollView, TextInput } from 'react-native';
 import { useState } from 'react';
 import { Stack } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { formatRupiah } from '../src/utils/currency';
 
 interface Denomination {
@@ -24,6 +25,7 @@ const DENOMINATIONS: Denomination[] = [
 ];
 
 export default function CashierCalculatorScreen() {
+  const insets = useSafeAreaInsets();
   const [counts, setCounts] = useState<{ [key: string]: number }>({});
 
   function updateCount(key: string, delta: number) {
@@ -89,7 +91,13 @@ export default function CashierCalculatorScreen() {
         </View>
 
         {/* Denominations List */}
-        <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent}>
+        <ScrollView
+          style={styles.scroll}
+          contentContainerStyle={[
+            styles.scrollContent,
+            { paddingBottom: Math.max(insets.bottom, 16) + 40 },
+          ]}
+        >
           {DENOMINATIONS.map((d, index) => {
             const key = `${d.nominal}-${d.type}-${index}`;
             const qty = counts[key] ?? 0;

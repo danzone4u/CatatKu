@@ -2,6 +2,7 @@ import { View, Text, StyleSheet, FlatList, Pressable, TextInput, Modal, Image } 
 import { useSQLiteContext } from 'expo-sqlite';
 import { useCallback, useState } from 'react';
 import { useFocusEffect, router } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import TransactionCard from '../../src/components/TransactionCard';
 import FilterChip from '../../src/components/FilterChip';
@@ -16,6 +17,7 @@ type FilterType = 'all' | 'income' | 'expense';
 type TimePeriod = 'all' | 'daily' | 'weekly' | 'monthly' | 'yearly';
 
 export default function TransactionsScreen() {
+  const insets = useSafeAreaInsets();
   const db = useSQLiteContext();
   const palette = useThemeStore((s) => s.palette);
   const isDarkMode = useThemeStore((s) => s.isDarkMode);
@@ -275,14 +277,21 @@ export default function TransactionsScreen() {
             isDark={isDarkMode}
           />
         }
-        contentContainerStyle={[styles.listContent, transactions.length === 0 && styles.emptyList]}
+        contentContainerStyle={[
+          styles.listContent,
+          { paddingBottom: 90 + insets.bottom },
+          transactions.length === 0 && styles.emptyList,
+        ]}
       />
 
       {/* FAB: Tambah Transaksi */}
       <Pressable
         style={({ pressed }) => [
           styles.fab,
-          { backgroundColor: palette.primary },
+          {
+            backgroundColor: palette.primary,
+            bottom: 24 + insets.bottom,
+          },
           pressed && { opacity: 0.9, transform: [{ scale: 0.96 }] },
         ]}
         onPress={() => router.push('/add-transaction')}

@@ -6,8 +6,8 @@ import {
   Pressable,
   FlatList,
   useWindowDimensions,
-  SafeAreaView,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { PALETTE, FONTS } from '../constants/theme';
 
@@ -56,6 +56,7 @@ interface Props {
 }
 
 export default function OnboardingModal({ onFinish, isDark }: Props) {
+  const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
   const [currentIndex, setCurrentIndex] = useState(0);
   const flatListRef = useRef<FlatList>(null);
@@ -72,7 +73,15 @@ export default function OnboardingModal({ onFinish, isDark }: Props) {
   };
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: isDark ? '#0C151D' : '#FAF8F5' }]}>
+    <View
+      style={[
+        styles.container,
+        {
+          backgroundColor: isDark ? '#0C151D' : '#FAF8F5',
+          paddingTop: Math.max(insets.top, 16),
+        },
+      ]}
+    >
       <StatusBar style={isDark ? 'light' : 'dark'} />
 
       {/* Slide Carousel */}
@@ -124,7 +133,7 @@ export default function OnboardingModal({ onFinish, isDark }: Props) {
       />
 
       {/* Bottom Navigation */}
-      <View style={styles.bottomBar}>
+      <View style={[styles.bottomBar, { paddingBottom: Math.max(insets.bottom, 16) + 16 }]}>
         {/* Indicators */}
         <View style={styles.dotsRow}>
           {SLIDES.map((_, idx) => (
@@ -160,7 +169,7 @@ export default function OnboardingModal({ onFinish, isDark }: Props) {
           </Text>
         </Pressable>
       </View>
-    </SafeAreaView>
+    </View>
   );
 }
 

@@ -382,7 +382,7 @@ export default function CashbookListScreen() {
         style={styles.scroll}
         contentContainerStyle={[
           styles.content,
-          { paddingTop: Math.max(insets.top, 16) + 6 },
+          { paddingTop: Math.max(insets.top, 16) + 6, paddingBottom: Math.max(insets.bottom, 16) + 40 },
           isTablet && { maxWidth: 840, width: '100%', alignSelf: 'center' },
           { flexGrow: 1 },
         ]}

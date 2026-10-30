@@ -2,6 +2,7 @@ import { View, Text, StyleSheet, Pressable, ScrollView, TextInput, useWindowDime
 import { useSQLiteContext } from 'expo-sqlite';
 import { useCallback, useState } from 'react';
 import { useFocusEffect, Stack, router } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import {
   getAccounts,
@@ -39,6 +40,7 @@ const COLORS = [
 ];
 
 export default function WalletsScreen() {
+  const insets = useSafeAreaInsets();
   const db = useSQLiteContext();
   const { width } = useWindowDimensions();
   const isTablet = width >= 600;
@@ -274,7 +276,7 @@ export default function WalletsScreen() {
         contentContainerStyle={[
           styles.content,
           isTablet && { maxWidth: 840, width: '100%', alignSelf: 'center' },
-          { flexGrow: 1 },
+          { flexGrow: 1, paddingBottom: Math.max(insets.bottom, 16) + 32 },
         ]}
         showsVerticalScrollIndicator={false}
       >

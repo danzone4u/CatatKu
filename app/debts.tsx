@@ -2,6 +2,7 @@ import { View, Text, StyleSheet, FlatList, Pressable, useWindowDimensions } from
 import { useSQLiteContext } from 'expo-sqlite';
 import { useCallback, useState } from 'react';
 import { useFocusEffect, router, Stack } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import DebtCard from '../src/components/DebtCard';
 import FilterChip from '../src/components/FilterChip';
 import EmptyState from '../src/components/EmptyState';
@@ -15,6 +16,7 @@ import { BackArrowIcon } from '../src/components/ActionIcons';
 type FilterType = 'all' | 'debt' | 'receivable';
 
 export default function DebtsScreen() {
+  const insets = useSafeAreaInsets();
   const db = useSQLiteContext();
   const { width } = useWindowDimensions();
   const isTablet = width >= 600;
@@ -119,6 +121,7 @@ export default function DebtsScreen() {
         }
         contentContainerStyle={[
           styles.listContent,
+          { paddingBottom: Math.max(insets.bottom, 16) + 32 },
           debts.length === 0 && { flexGrow: 1 },
         ]}
       />

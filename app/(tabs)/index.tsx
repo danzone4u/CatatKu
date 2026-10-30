@@ -263,7 +263,7 @@ export default function DashboardScreen() {
         contentContainerStyle={[
           styles.content,
           isTablet && { maxWidth: 840, width: '100%', alignSelf: 'center' },
-          { flexGrow: 1 },
+          { flexGrow: 1, paddingBottom: 88 + insets.bottom },
         ]}
         showsVerticalScrollIndicator={false}
       >
@@ -606,7 +606,10 @@ export default function DashboardScreen() {
       <Pressable
         style={({ pressed }) => [
           styles.fabButton,
-          { backgroundColor: palette.primary },
+          {
+            backgroundColor: palette.primary,
+            bottom: 24 + insets.bottom,
+          },
           pressed && styles.fabButtonPressed,
         ]}
         onPress={() => router.push('/add-transaction')}

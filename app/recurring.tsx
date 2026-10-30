@@ -13,6 +13,7 @@ import {
 import { useSQLiteContext } from 'expo-sqlite';
 import { useCallback, useState } from 'react';
 import { useFocusEffect, router, Stack } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   getRecurringRules,
   addRecurringRule,
@@ -40,6 +41,7 @@ import DatePickerModal from '../src/components/DatePickerModal';
 type FilterTab = 'all' | 'bills' | 'auto';
 
 export default function RecurringScreen() {
+  const insets = useSafeAreaInsets();
   const db = useSQLiteContext();
   const { width } = useWindowDimensions();
   const isTablet = width >= 600;
@@ -313,7 +315,7 @@ export default function RecurringScreen() {
         contentContainerStyle={[
           styles.listContent,
           isTablet && { maxWidth: 840, width: '100%', alignSelf: 'center' },
-          { flexGrow: 1 },
+          { flexGrow: 1, paddingBottom: Math.max(insets.bottom, 16) + 32 },
         ]}
         showsVerticalScrollIndicator={false}
         ListHeaderComponent={

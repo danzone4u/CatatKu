@@ -14,6 +14,7 @@ import Constants from 'expo-constants';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useCallback, useState } from 'react';
 import { useFocusEffect, router, Stack } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useThemeStore } from '../src/stores/useThemeStore';
 import {
   getSetting,
@@ -35,6 +36,7 @@ import { ModernConfirmModal, type ModalType } from '../src/components/ModernConf
 import { useLockStore } from '../src/stores/useLockStore';
 
 export default function GlobalSettingsScreen() {
+  const insets = useSafeAreaInsets();
   const db = useSQLiteContext();
   const { width } = useWindowDimensions();
   const isTablet = width >= 600;
@@ -195,7 +197,7 @@ export default function GlobalSettingsScreen() {
         contentContainerStyle={[
           styles.content,
           isTablet && { maxWidth: 740, width: '100%', alignSelf: 'center' },
-          { flexGrow: 1 },
+          { flexGrow: 1, paddingBottom: Math.max(insets.bottom, 16) + 32 },
         ]}
         showsVerticalScrollIndicator={false}
       >

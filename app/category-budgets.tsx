@@ -2,6 +2,7 @@ import { View, Text, StyleSheet, Pressable, ScrollView, TextInput, useWindowDime
 import { useSQLiteContext } from 'expo-sqlite';
 import { useCallback, useState } from 'react';
 import { useFocusEffect, Stack, router } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   getCategoryBudgets,
   setCategoryBudget,
@@ -19,6 +20,7 @@ import { ModernConfirmModal, type ModalType } from '../src/components/ModernConf
 import { BackArrowIcon } from '../src/components/ActionIcons';
 
 export default function CategoryBudgetsScreen() {
+  const insets = useSafeAreaInsets();
   const db = useSQLiteContext();
   const { width } = useWindowDimensions();
   const isTablet = width >= 600;
@@ -160,6 +162,7 @@ export default function CategoryBudgetsScreen() {
           contentContainerStyle={[
             styles.content,
             isTablet && { maxWidth: 840, width: '100%', alignSelf: 'center' },
+            { paddingBottom: Math.max(insets.bottom, 16) + 40 },
           ]}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"

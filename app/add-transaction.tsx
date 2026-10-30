@@ -13,6 +13,7 @@ import {
 import { useSQLiteContext } from 'expo-sqlite';
 import { useState, useCallback } from 'react';
 import { router, Stack, useLocalSearchParams, useFocusEffect } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import * as ImagePicker from 'expo-image-picker';
 import {
@@ -49,6 +50,7 @@ const QUICK_TEMPLATES: QuickTemplate[] = [
 ];
 
 export default function AddTransactionScreen() {
+  const insets = useSafeAreaInsets();
   const db = useSQLiteContext();
   const palette = useThemeStore((s) => s.palette);
   const isDarkMode = useThemeStore((s) => s.isDarkMode);
@@ -269,7 +271,10 @@ export default function AddTransactionScreen() {
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
         <ScrollView
-          contentContainerStyle={[styles.content, { paddingBottom: 120 }]}
+          contentContainerStyle={[
+            styles.content,
+            { paddingBottom: Math.max(insets.bottom, 16) + 120 },
+          ]}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
           automaticallyAdjustKeyboardInsets={true}
@@ -585,7 +590,16 @@ export default function AddTransactionScreen() {
         onRequestClose={() => setShowReceiptModal(false)}
       >
         <Pressable style={styles.sheetBackdrop} onPress={() => setShowReceiptModal(false)}>
-          <Pressable style={[styles.sheetContent, { backgroundColor: palette.card }]} onPress={(e) => e.stopPropagation()}>
+          <Pressable
+            style={[
+              styles.sheetContent,
+              {
+                backgroundColor: palette.card,
+                paddingBottom: Math.max(insets.bottom, 16) + 24,
+              },
+            ]}
+            onPress={(e) => e.stopPropagation()}
+          >
             <View style={styles.sheetIndicator} />
             <Text style={[styles.sheetTitle, { color: palette.ink }]}>Pilih Foto Struk / Nota</Text>
             <Text style={[styles.sheetSub, { color: palette.inkMuted }]}>
