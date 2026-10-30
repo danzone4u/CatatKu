@@ -2,7 +2,7 @@
   "expo": {
     "name": "CatatKu",
     "slug": "dompet-app",
-    "version": "1.1.2",
+    "version": "1.1.3",
     "orientation": "portrait",
     "icon": "./assets/logo.png",
     "splash": {
@@ -24,7 +24,7 @@
     },
     "android": {
       "package": "com.dani.catatku",
-      "versionCode": 4,
+      "versionCode": 5,
       "adaptiveIcon": {
         "backgroundColor": "#1B6E67",
         "foregroundImage": "./assets/logo.png"
