@@ -83,7 +83,7 @@ export default function DashboardScreen() {
   >([]);
   const [accounts, setAccounts] = useState<AccountWithCalculatedBalance[]>([]);
   const [savingsGoals, setSavingsGoals] = useState<SavingsGoal[]>([]);
-  const [recentTrend, setRecentTrend] = useState<number[]>([]);
+  const [recentTrend, setRecentTrend] = useState<{ date: string; income: number; expense: number }[]>([]);
 
   // Shortcut customization state
   const [activeShortcutIds, setActiveShortcutIds] = useState<string[]>(DEFAULT_SHORTCUT_IDS);
@@ -152,13 +152,12 @@ export default function DashboardScreen() {
       getCategoryBreakdown(db, cashbookId, year, month, 'expense'),
       getAccounts(db, cashbookId),
       getSavingsGoals(db, cashbookId),
-      db.getAllAsync<{ daily_net: number }>(
-        `SELECT (
-           COALESCE(SUM(CASE WHEN type = 'income' THEN amount ELSE 0 END), 0) -
-           COALESCE(SUM(CASE WHEN type = 'expense' THEN amount ELSE 0 END), 0)
-         ) as daily_net
+      db.getAllAsync<{ date: string; income: number; expense: number }>(
+        `SELECT date,
+           COALESCE(SUM(CASE WHEN type = 'income' THEN amount ELSE 0 END), 0) as income,
+           COALESCE(SUM(CASE WHEN type = 'expense' THEN amount ELSE 0 END), 0) as expense
          FROM transactions
-         WHERE cashbook_id = ?
+         WHERE cashbook_id = ? AND is_void = 0
          GROUP BY date
          ORDER BY date DESC
          LIMIT 7`,
@@ -171,7 +170,7 @@ export default function DashboardScreen() {
     setBreakdown(b);
     setAccounts(accs);
     setSavingsGoals(goals);
-    setRecentTrend((dailyTrend || []).map((r) => r.daily_net).reverse());
+    setRecentTrend((dailyTrend || []).reverse());
   }, [db, cashbookId, year, month, setActiveCashbook]);
 
   useFocusEffect(
@@ -329,66 +328,136 @@ export default function DashboardScreen() {
             </View>
           </View>
 
-          {/* Line Chart Visual Grafik Arus Finansial Catatan */}
+          {/* Line Chart Visual Grafik Arus Finansial Catatan (Pemasukan vs Pengeluaran) */}
           {(() => {
-            const trendPoints = recentTrend.length > 0 ? recentTrend : [0, 0];
-            const svgWidth = 300;
-            const svgHeight = 52;
-            const padX = 10;
-            const padY = 8;
-            const minVal = Math.min(...trendPoints, 0);
-            const maxVal = Math.max(...trendPoints, 0);
-            const range = maxVal - minVal === 0 ? 1 : maxVal - minVal;
-            const stepX = trendPoints.length > 1 ? (svgWidth - padX * 2) / (trendPoints.length - 1) : 0;
-            const coordinates = trendPoints.map((val, idx) => {
+            const hasData = recentTrend.length > 0;
+            const trendData = hasData ? recentTrend : [
+              { date: '1', income: 0, expense: 0 },
+              { date: '2', income: 0, expense: 0 },
+            ];
+            const svgWidth = 320;
+            const svgHeight = 64;
+            const padX = 12;
+            const padY = 10;
+
+            const maxVal = Math.max(
+              ...trendData.map((d) => Math.max(d.income, d.expense)),
+              1000
+            );
+
+            const stepX = trendData.length > 1 ? (svgWidth - padX * 2) / (trendData.length - 1) : 0;
+
+            const incomeCoords = trendData.map((d, idx) => {
               const x = padX + idx * stepX;
-              const y = svgHeight - padY - ((val - minVal) / range) * (svgHeight - padY * 2);
-              return { x, y, val };
+              const y = svgHeight - padY - (d.income / maxVal) * (svgHeight - padY * 2);
+              return { x, y, val: d.income };
             });
-            const pathD = coordinates.reduce((acc, curr, idx) => {
+
+            const expenseCoords = trendData.map((d, idx) => {
+              const x = padX + idx * stepX;
+              const y = svgHeight - padY - (d.expense / maxVal) * (svgHeight - padY * 2);
+              return { x, y, val: d.expense };
+            });
+
+            const incomePathD = incomeCoords.reduce((acc, curr, idx) => {
               return idx === 0 ? `M ${curr.x} ${curr.y}` : `${acc} L ${curr.x} ${curr.y}`;
             }, '');
-            const areaD = coordinates.length > 1
-              ? `${pathD} L ${coordinates[coordinates.length - 1].x} ${svgHeight} L ${coordinates[0].x} ${svgHeight} Z`
+
+            const expensePathD = expenseCoords.reduce((acc, curr, idx) => {
+              return idx === 0 ? `M ${curr.x} ${curr.y}` : `${acc} L ${curr.x} ${curr.y}`;
+            }, '');
+
+            const incomeAreaD = incomeCoords.length > 1
+              ? `${incomePathD} L ${incomeCoords[incomeCoords.length - 1].x} ${svgHeight} L ${incomeCoords[0].x} ${svgHeight} Z`
               : '';
-            const isPos = summary.balance >= 0;
-            const strokeColor = isPos ? PALETTE.primary : PALETTE.expense;
-            const gradientId = `detail_trend_${cashbookId}`;
+
+            const expenseAreaD = expenseCoords.length > 1
+              ? `${expensePathD} L ${expenseCoords[expenseCoords.length - 1].x} ${svgHeight} L ${expenseCoords[0].x} ${svgHeight} Z`
+              : '';
+
+            const incGradId = `inc_grad_${cashbookId}`;
+            const expGradId = `exp_grad_${cashbookId}`;
 
             return (
               <View style={styles.trendBox}>
                 <View style={styles.trendHeader}>
-                  <Text style={styles.trendTitle}>Grafik Tren Aktivitas</Text>
-                  <Text style={styles.trendSubtitle}>
-                    {recentTrend.length > 0 ? '7 Hari Terakhir' : 'Belum Ada Transaksi'}
-                  </Text>
+                  <View>
+                    <Text style={[styles.trendTitle, { color: palette.inkSecondary }]}>Grafik Tren Aktivitas</Text>
+                    <Text style={[styles.trendSubtitle, { color: palette.inkMuted }]}>
+                      {hasData ? `${recentTrend.length} Hari Transaksi Terakhir` : 'Belum Ada Transaksi'}
+                    </Text>
+                  </View>
+                  <View style={styles.trendLegendRow}>
+                    <View style={styles.trendLegendItem}>
+                      <View style={[styles.trendLegendDot, { backgroundColor: palette.income }]} />
+                      <Text style={[styles.trendLegendText, { color: palette.income }]}>Masuk</Text>
+                    </View>
+                    <View style={styles.trendLegendItem}>
+                      <View style={[styles.trendLegendDot, { backgroundColor: palette.expense }]} />
+                      <Text style={[styles.trendLegendText, { color: palette.expense }]}>Keluar</Text>
+                    </View>
+                  </View>
                 </View>
-                <View style={styles.trendSvgWrap}>
+                <View style={[styles.trendSvgWrap, { backgroundColor: isDarkMode ? '#13222E' : '#F8FCFA', borderColor: palette.borderSubtle }]}>
                   <Svg width="100%" height={svgHeight} viewBox={`0 0 ${svgWidth} ${svgHeight}`}>
                     <Defs>
-                      <LinearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
-                        <Stop offset="0" stopColor={strokeColor} stopOpacity="0.25" />
-                        <Stop offset="1" stopColor={strokeColor} stopOpacity="0.0" />
+                      <LinearGradient id={incGradId} x1="0" y1="0" x2="0" y2="1">
+                        <Stop offset="0" stopColor={palette.income} stopOpacity="0.22" />
+                        <Stop offset="1" stopColor={palette.income} stopOpacity="0.0" />
+                      </LinearGradient>
+                      <LinearGradient id={expGradId} x1="0" y1="0" x2="0" y2="1">
+                        <Stop offset="0" stopColor={palette.expense} stopOpacity="0.20" />
+                        <Stop offset="1" stopColor={palette.expense} stopOpacity="0.0" />
                       </LinearGradient>
                     </Defs>
-                    {areaD ? <Path d={areaD} fill={`url(#${gradientId})`} /> : null}
+
+                    {/* Area Gradients */}
+                    {incomeAreaD ? <Path d={incomeAreaD} fill={`url(#${incGradId})`} /> : null}
+                    {expenseAreaD ? <Path d={expenseAreaD} fill={`url(#${expGradId})`} /> : null}
+
+                    {/* Expense Line (Merah) */}
                     <Path
-                      d={pathD}
-                      stroke={strokeColor}
-                      strokeWidth="2.4"
+                      d={expensePathD}
+                      stroke={palette.expense}
+                      strokeWidth="2.2"
                       strokeLinecap="round"
                       strokeLinejoin="round"
                       fill="none"
                     />
-                    {coordinates.map((pt, i) => (
+
+                    {/* Income Line (Hijau) */}
+                    <Path
+                      d={incomePathD}
+                      stroke={palette.income}
+                      strokeWidth="2.2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      fill="none"
+                    />
+
+                    {/* Dots for Expense */}
+                    {expenseCoords.map((pt, i) => (
                       <Circle
-                        key={i}
+                        key={`exp-${i}`}
                         cx={pt.x}
                         cy={pt.y}
-                        r="3.5"
-                        fill="#FFFFFF"
-                        stroke={strokeColor}
-                        strokeWidth="2.2"
+                        r="3"
+                        fill={palette.card}
+                        stroke={palette.expense}
+                        strokeWidth="2"
+                      />
+                    ))}
+
+                    {/* Dots for Income */}
+                    {incomeCoords.map((pt, i) => (
+                      <Circle
+                        key={`inc-${i}`}
+                        cx={pt.x}
+                        cy={pt.y}
+                        r="3"
+                        fill={palette.card}
+                        stroke={palette.income}
+                        strokeWidth="2"
                       />
                     ))}
                   </Svg>
@@ -841,23 +910,39 @@ const styles = StyleSheet.create({
   trendTitle: {
     fontFamily: FONTS.sansBold,
     fontSize: 10,
-    color: PALETTE.inkMuted,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
   trendSubtitle: {
     fontFamily: FONTS.sansMedium,
     fontSize: 10,
-    color: PALETTE.inkSecondary,
+    marginTop: 1,
+  },
+  trendLegendRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  trendLegendItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  trendLegendDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+  },
+  trendLegendText: {
+    fontFamily: FONTS.sansBold,
+    fontSize: 10,
   },
   trendSvgWrap: {
-    height: 52,
+    height: 64,
     width: '100%',
-    backgroundColor: '#F8FCFA',
     borderRadius: 12,
     overflow: 'hidden',
     borderWidth: 1,
-    borderColor: PALETTE.borderSubtle,
     justifyContent: 'center',
   },
   budgetBox: {
