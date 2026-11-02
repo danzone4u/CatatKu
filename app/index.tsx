@@ -183,9 +183,21 @@ export default function CashbookListScreen() {
   const checkOnboarding = useCallback(async () => {
     try {
       const seen = await getSetting(db, 'has_seen_onboarding_v1');
-      if (!seen) {
-        setShowOnboarding(true);
+      if (seen === '1' || seen === 'true') {
+        return;
       }
+
+      // Jangan tampilkan jika sudah ada transaksi atau buku kas (pengguna aktif)
+      const countRow = await db.getFirstAsync<{ cnt: number }>('SELECT COUNT(*) as cnt FROM transactions');
+      const booksRow = await db.getFirstAsync<{ cnt: number }>('SELECT COUNT(*) as cnt FROM cashbooks');
+      if ((countRow && countRow.cnt > 0) || (booksRow && booksRow.cnt > 1)) {
+        await setSetting(db, 'has_seen_onboarding_v1', '1');
+        return;
+      }
+
+      // Langsung tandai agar tidak pernah muncul berulang
+      await setSetting(db, 'has_seen_onboarding_v1', '1');
+      setShowOnboarding(true);
     } catch {
       // ignore
     }

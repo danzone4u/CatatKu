@@ -21,16 +21,29 @@ export interface DriveBackupFile {
   size?: string;
 }
 
+let isGoogleDriveInitialized = false;
+
 /**
  * Inisialisasi Google Sign-In SDK
  * Catatan: webClientId opsional jika hanya menggunakan AppData folder di Android
  */
 export function initGoogleDrive(webClientId?: string) {
-  GoogleSignin.configure({
-    scopes: GDRIVE_SCOPES,
-    webClientId: webClientId || undefined,
-    offlineAccess: true,
-  });
+  try {
+    GoogleSignin.configure({
+      scopes: GDRIVE_SCOPES,
+      webClientId: webClientId || undefined,
+      offlineAccess: Boolean(webClientId),
+    });
+    isGoogleDriveInitialized = true;
+  } catch (err) {
+    console.warn('initGoogleDrive error:', err);
+  }
+}
+
+function ensureConfigured() {
+  if (!isGoogleDriveInitialized) {
+    initGoogleDrive();
+  }
 }
 
 /**
@@ -38,9 +51,10 @@ export function initGoogleDrive(webClientId?: string) {
  */
 export async function signInGoogle(): Promise<GoogleUserInfo | null> {
   try {
+    ensureConfigured();
     await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true });
     const response = await GoogleSignin.signIn();
-    const user = response.data?.user;
+    const user = (response as any)?.data?.user || (response as any)?.user;
     if (!user) return null;
     return {
       id: user.id,
@@ -59,13 +73,15 @@ export async function signInGoogle(): Promise<GoogleUserInfo | null> {
  */
 export async function getCurrentGoogleUser(): Promise<GoogleUserInfo | null> {
   try {
-    const user = await GoogleSignin.getCurrentUser();
-    if (!user?.user) return null;
+    ensureConfigured();
+    const currentUser = await GoogleSignin.getCurrentUser();
+    const user = (currentUser as any)?.user || (currentUser as any)?.data?.user;
+    if (!user) return null;
     return {
-      id: user.user.id,
-      name: user.user.name,
-      email: user.user.email,
-      photo: user.user.photo,
+      id: user.id,
+      name: user.name,
+      email: user.email,
+      photo: user.photo,
     };
   } catch {
     return null;
@@ -90,6 +106,7 @@ export async function uploadBackupToDrive(
   jsonContent: string,
   fileName: string
 ): Promise<{ success: boolean; fileId: string }> {
+  ensureConfigured();
   const tokens = await GoogleSignin.getTokens();
   const accessToken = tokens.accessToken;
 
@@ -138,6 +155,7 @@ export async function uploadBackupToDrive(
  * Ambil daftar berkas backup CatatKu dari appDataFolder di Google Drive
  */
 export async function listDriveBackups(): Promise<DriveBackupFile[]> {
+  ensureConfigured();
   const tokens = await GoogleSignin.getTokens();
   const accessToken = tokens.accessToken;
 
@@ -166,6 +184,7 @@ export async function restoreFromDriveFile(
   db: SQLiteDatabase,
   fileId: string
 ): Promise<{ success: boolean; count: number; message: string }> {
+  ensureConfigured();
   const tokens = await GoogleSignin.getTokens();
   const accessToken = tokens.accessToken;
 

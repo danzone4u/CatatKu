@@ -9,11 +9,15 @@ import { migrateDbIfNeeded } from '../src/database/schema';
 import { PALETTE } from '../src/constants/theme';
 import PinLockOverlay from '../src/components/PinLockOverlay';
 import AnimatedSplashScreen from '../src/components/AnimatedSplashScreen';
+import { initGoogleDrive } from '../src/utils/googleDrive';
 
 export default function RootLayout() {
   const [showSplash, setShowSplash] = useState(true);
 
   useEffect(() => {
+    // Inisialisasi Google Drive Client SDK
+    initGoogleDrive();
+
     // Pengaman: splash pasti terlepas maksimal dalam 1.2 detik
     const timer = setTimeout(() => {
       setShowSplash(false);

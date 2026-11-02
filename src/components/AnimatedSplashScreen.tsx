@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { View, Text, StyleSheet, Animated, Image, ActivityIndicator, Pressable } from 'react-native';
+import Constants from 'expo-constants';
 import { PALETTE, FONTS } from '../constants/theme';
 
 interface Props {
@@ -96,7 +97,7 @@ export default function AnimatedSplashScreen({ onFinish }: Props) {
             © 2026 CatatKu by Dani Abdul Wahid
           </Text>
           <Text style={styles.copyrightSub} allowFontScaling={false}>
-            Versi 1.1.0
+            Versi {Constants.expoConfig?.version || '1.1.4'}
           </Text>
         </Animated.View>
       </Animated.View>
