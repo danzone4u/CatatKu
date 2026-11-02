@@ -8,7 +8,7 @@ import {
   RefreshControl,
   Dimensions,
 } from 'react-native';
-import Svg, { Path, Defs, LinearGradient, Stop, Rect, Text as SvgText } from 'react-native-svg';
+import Svg, { Path, Defs, LinearGradient, Stop, Rect, G, Text as SvgText } from 'react-native-svg';
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
 import { File, Paths } from 'expo-file-system';
@@ -67,6 +67,8 @@ export default function ReportsScreen() {
 
   const [income, setIncome] = useState(0);
   const [expense, setExpense] = useState(0);
+  const [prevExpense, setPrevExpense] = useState(0);
+  const [dailyBurnRate, setDailyBurnRate] = useState(0);
   const [categoryBreakdown, setCategoryBreakdown] = useState<CategoryReport[]>([]);
   const [incomeCategoryBreakdown, setIncomeCategoryBreakdown] = useState<CategoryReport[]>([]);
   const [categoryTab, setCategoryTab] = useState<'expense' | 'income'>('expense');
@@ -203,6 +205,35 @@ export default function ReportsScreen() {
       });
       setIncome(inc);
       setExpense(exp);
+
+      // Hitung perbandingan dengan periode sebelumnya (MoM / WoW / DoD / YoY)
+      const prevDate = new Date(currentDate);
+      if (period === 'daily') prevDate.setDate(prevDate.getDate() - 1);
+      else if (period === 'weekly') prevDate.setDate(prevDate.getDate() - 7);
+      else if (period === 'monthly') prevDate.setMonth(prevDate.getMonth() - 1);
+      else if (period === 'yearly') prevDate.setFullYear(prevDate.getFullYear() - 1);
+
+      const { startDateStr: prevStart, endDateStr: prevEnd } = getDateRange(period, prevDate);
+      const prevTotals = await db.getAllAsync<{ type: 'income' | 'expense'; total: number }>(`
+        SELECT type, SUM(amount) as total
+        FROM transactions
+        WHERE cashbook_id = ? AND date >= ? AND date <= ? AND is_void = 0${accFilterClause}
+        GROUP BY type
+      `, cashbookId, prevStart, prevEnd, ...accParams);
+
+      let pExp = 0;
+      prevTotals.forEach((row) => {
+        if (row.type === 'expense') pExp = row.total || 0;
+      });
+      setPrevExpense(pExp);
+
+      // Hitung Daily Burn Rate (rata-rata pengeluaran harian periode aktif)
+      const startD = new Date(startDateStr);
+      const endD = new Date(endDateStr);
+      const now = new Date();
+      const effectiveEnd = endD > now ? now : endD;
+      const diffDays = Math.max(1, Math.ceil((effectiveEnd.getTime() - startD.getTime()) / (1000 * 60 * 60 * 24)));
+      setDailyBurnRate(exp > 0 ? Math.round(exp / diffDays) : 0);
 
       // Query breakdown pengeluaran per kategori
       const catRows = await db.getAllAsync<{ category_name: string; category_icon: string; total_amount: number }>(`
@@ -777,6 +808,20 @@ export default function ReportsScreen() {
 
   const netSavings = income - expense;
 
+  // Persentase perubahan pengeluaran
+  const expenseChangePct = prevExpense > 0
+    ? Math.round(((expense - prevExpense) / prevExpense) * 100)
+    : expense > 0 ? 100 : 0;
+
+  // Rasio tabungan (saving rate)
+  const savingRate = income > 0 ? Math.max(0, Math.round((netSavings / income) * 100)) : 0;
+
+  // Palet warna cerah untuk segmen donut chart
+  const DONUT_COLORS = [
+    '#0F766E', '#06B6D4', '#F59E0B', '#EF4444', '#8B5CF6',
+    '#EC4899', '#10B981', '#3B82F6', '#6366F1', '#14B8A6'
+  ];
+
   // Chart Rendering Helpers
   const maxVal = Math.max(...trendData.map((d) => Math.max(d.income, d.expense)), 1000);
   const chartPointsCount = trendData.length;
@@ -1000,6 +1045,61 @@ export default function ReportsScreen() {
           </View>
         </View>
 
+        {/* Card Analisis & Komparasi MoM / Periode Lalu */}
+        <View style={[styles.summaryCard, { backgroundColor: palette.card, borderColor: palette.border }]}>
+          <Text style={[styles.sectionTitle, { color: palette.ink }]}>Analisis & Komparasi</Text>
+
+          <View style={styles.momGrid}>
+            {/* Box 1: Perubahan Pengeluaran */}
+            <View style={[styles.momCard, { backgroundColor: palette.cardMuted, borderColor: palette.borderSubtle }]}>
+              <Text style={[styles.momLabel, { color: palette.inkMuted }]}>Pengeluaran vs Lalu</Text>
+              <View style={styles.momValueRow}>
+                <Text style={[
+                  styles.momValue,
+                  { color: expenseChangePct <= 0 ? palette.income : palette.expense }
+                ]}>
+                  {expenseChangePct > 0 ? `+${expenseChangePct}%` : `${expenseChangePct}%`}
+                </Text>
+                <Text style={styles.momIcon}>
+                  {expenseChangePct <= 0 ? '📉 Hemat' : '📈 Naik'}
+                </Text>
+              </View>
+              <Text style={[styles.momSubtext, { color: palette.inkMuted }]}>
+                Lalu: {formatRupiah(prevExpense)}
+              </Text>
+            </View>
+
+            {/* Box 2: Tingkat Tabungan (Saving Rate) */}
+            <View style={[styles.momCard, { backgroundColor: palette.cardMuted, borderColor: palette.borderSubtle }]}>
+              <Text style={[styles.momLabel, { color: palette.inkMuted }]}>Saving Rate</Text>
+              <View style={styles.momValueRow}>
+                <Text style={[styles.momValue, { color: palette.primary }]}>
+                  {savingRate}%
+                </Text>
+                <Text style={styles.momIcon}>💰</Text>
+              </View>
+              <Text style={[styles.momSubtext, { color: palette.inkMuted }]}>
+                Disimpan dari income
+              </Text>
+            </View>
+          </View>
+
+          {/* Rata-rata Belanja Harian (Daily Burn Rate) */}
+          {dailyBurnRate > 0 && (
+            <View style={[styles.burnRateRow, { borderTopColor: palette.borderSubtle }]}>
+              <View>
+                <Text style={[styles.burnRateLabel, { color: palette.inkMuted }]}>Rata-Rata Pengeluaran Harian</Text>
+                <Text style={[styles.burnRateAmount, { color: palette.ink }]}>
+                  {formatRupiah(dailyBurnRate)} <Text style={{ fontSize: 11, fontWeight: 'normal', color: palette.inkMuted }}>/ hari</Text>
+                </Text>
+              </View>
+              <View style={[styles.burnBadge, { backgroundColor: isDarkMode ? '#1E293B' : '#F1F5F9' }]}>
+                <Text style={[styles.burnBadgeText, { color: palette.inkSecondary }]}>Daily Burn</Text>
+              </View>
+            </View>
+          )}
+        </View>
+
         {/* Chart Tren Arus Keuangan */}
         <View style={[styles.summaryCard, { backgroundColor: palette.card, borderColor: palette.border }]}>
           <View style={styles.chartHeaderRow}>
@@ -1150,7 +1250,7 @@ export default function ReportsScreen() {
           </View>
         )}
 
-        {/* Breakdown Kategori */}
+        {/* Breakdown Kategori & Donut Chart */}
         <View style={[styles.summaryCard, { backgroundColor: palette.card, borderColor: palette.border }]}>
           <View style={styles.catSectionHeaderRow}>
             <Text style={[styles.sectionTitle, { color: palette.ink, marginBottom: 0 }]}>
@@ -1206,6 +1306,7 @@ export default function ReportsScreen() {
             const currentItems = categoryTab === 'expense' ? categoryBreakdown : incomeCategoryBreakdown;
             const barColor = categoryTab === 'expense' ? palette.expense : palette.income;
             const typeLabel = categoryTab === 'expense' ? 'pengeluaran' : 'pemasukan';
+            const totalVal = categoryTab === 'expense' ? expense : income;
 
             if (currentItems.length === 0) {
               return (
@@ -1218,30 +1319,99 @@ export default function ReportsScreen() {
               );
             }
 
-            return currentItems.map((item, idx) => (
-              <View key={idx} style={styles.categoryRow}>
-                <View style={styles.categoryHeader}>
-                  <Text style={styles.catIconText}>{item.category_icon}</Text>
-                  <Text style={[styles.catName, { color: palette.ink }]} allowFontScaling={false}>{item.category_name}</Text>
-                  <Text style={[styles.catAmount, { color: barColor }]} allowFontScaling={false}>
-                    {categoryTab === 'income' ? '+' : '-'}{formatRupiah(item.total_amount)}
-                  </Text>
+            // Hitung Donut Arc Slices secara pure functional
+            const donutSize = 160;
+            const strokeWidth = 26;
+            const radius = (donutSize - strokeWidth) / 2;
+            const circumference = 2 * Math.PI * radius;
+
+            const donutSlices = currentItems.reduce<
+              { key: string; color: string; strokeDasharray: string; strokeDashoffset: number; cumPct: number }[]
+            >((acc, item, idx) => {
+              const prevCumPct = idx === 0 ? 0 : acc[idx - 1].cumPct;
+              const color = DONUT_COLORS[idx % DONUT_COLORS.length];
+              const pct = item.percentage / 100;
+              const strokeDasharray = `${pct * circumference} ${circumference}`;
+              const strokeDashoffset = -prevCumPct * circumference;
+              acc.push({
+                key: `donut-${idx}`,
+                color,
+                strokeDasharray,
+                strokeDashoffset,
+                cumPct: prevCumPct + pct,
+              });
+              return acc;
+            }, []);
+
+            return (
+              <View>
+                {/* Visual Donut Chart */}
+                <View style={styles.donutWrap}>
+                  <Svg width={donutSize} height={donutSize} viewBox={`0 0 ${donutSize} ${donutSize}`}>
+                    <G rotation="-90" origin={`${donutSize / 2}, ${donutSize / 2}`}>
+                      {/* Base Track */}
+                      <Path
+                        d={`M ${donutSize / 2} ${strokeWidth / 2} A ${radius} ${radius} 0 1 1 ${donutSize / 2 - 0.001} ${strokeWidth / 2}`}
+                        stroke={isDarkMode ? '#1E293B' : '#F1F5F9'}
+                        strokeWidth={strokeWidth}
+                        fill="none"
+                      />
+                      {donutSlices.map((slice) => (
+                        <Path
+                          key={slice.key}
+                          d={`M ${donutSize / 2} ${strokeWidth / 2} A ${radius} ${radius} 0 1 1 ${donutSize / 2 - 0.001} ${strokeWidth / 2}`}
+                          stroke={slice.color}
+                          strokeWidth={strokeWidth}
+                          strokeDasharray={slice.strokeDasharray}
+                          strokeDashoffset={slice.strokeDashoffset}
+                          strokeLinecap="round"
+                          fill="none"
+                        />
+                      ))}
+                    </G>
+                  </Svg>
+                  {/* Center Text inside Donut */}
+                  <View style={styles.donutCenter}>
+                    <Text style={[styles.donutCenterTitle, { color: palette.inkMuted }]}>TOTAL</Text>
+                    <Text style={[styles.donutCenterAmount, { color: barColor }]} numberOfLines={1}>
+                      {formatRupiah(totalVal)}
+                    </Text>
+                  </View>
                 </View>
 
-                {/* Progress Bar */}
-                <View style={[styles.progressBarBg, { backgroundColor: palette.cardMuted }]}>
-                  <View
-                    style={[
-                      styles.progressBarFill,
-                      { width: `${Math.min(item.percentage, 100)}%`, backgroundColor: barColor },
-                    ]}
-                  />
-                </View>
-                <Text style={[styles.percentageText, { color: palette.inkMuted }]}>
-                  {item.percentage.toFixed(1)}% dari total {typeLabel}
-                </Text>
+                {/* List Pos Kategori */}
+                {currentItems.map((item, idx) => {
+                  const sliceColor = DONUT_COLORS[idx % DONUT_COLORS.length];
+                  return (
+                    <View key={idx} style={styles.categoryRow}>
+                      <View style={styles.categoryHeader}>
+                        <View style={[styles.catColorDot, { backgroundColor: sliceColor }]} />
+                        <Text style={styles.catIconText}>{item.category_icon}</Text>
+                        <Text style={[styles.catName, { color: palette.ink }]} allowFontScaling={false}>
+                          {item.category_name}
+                        </Text>
+                        <Text style={[styles.catAmount, { color: palette.ink }]} allowFontScaling={false}>
+                          {formatRupiah(item.total_amount)}
+                        </Text>
+                      </View>
+
+                      {/* Progress Bar */}
+                      <View style={[styles.progressBarBg, { backgroundColor: palette.cardMuted }]}>
+                        <View
+                          style={[
+                            styles.progressBarFill,
+                            { width: `${Math.min(item.percentage, 100)}%`, backgroundColor: sliceColor },
+                          ]}
+                        />
+                      </View>
+                      <Text style={[styles.percentageText, { color: palette.inkMuted }]}>
+                        {item.percentage.toFixed(1)}% dari total {typeLabel}
+                      </Text>
+                    </View>
+                  );
+                })}
               </View>
-            ));
+            );
           })()}
         </View>
       </ScrollView>
@@ -1545,5 +1715,94 @@ const styles = StyleSheet.create({
   catTabBtnText: {
     fontFamily: FONTS.sansBold,
     fontSize: 10,
+  },
+  momGrid: {
+    flexDirection: 'row',
+    gap: 10,
+    marginBottom: 12,
+  },
+  momCard: {
+    flex: 1,
+    padding: 12,
+    borderRadius: 14,
+    borderWidth: 1,
+  },
+  momLabel: {
+    fontFamily: FONTS.sansMedium,
+    fontSize: 11,
+    marginBottom: 4,
+  },
+  momValueRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 2,
+  },
+  momValue: {
+    fontFamily: FONTS.sansBold,
+    fontSize: 18,
+    fontWeight: '800',
+  },
+  momIcon: {
+    fontSize: 11,
+    fontFamily: FONTS.sansBold,
+  },
+  momSubtext: {
+    fontFamily: FONTS.sansRegular,
+    fontSize: 10,
+  },
+  burnRateRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingTop: 12,
+    borderTopWidth: 1,
+  },
+  burnRateLabel: {
+    fontFamily: FONTS.sansMedium,
+    fontSize: 11,
+    marginBottom: 2,
+  },
+  burnRateAmount: {
+    fontFamily: FONTS.sansBold,
+    fontSize: 15,
+    fontWeight: '800',
+  },
+  burnBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+  },
+  burnBadgeText: {
+    fontFamily: FONTS.sansBold,
+    fontSize: 10,
+  },
+  donutWrap: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginVertical: 14,
+    height: 160,
+  },
+  donutCenter: {
+    position: 'absolute',
+    alignItems: 'center',
+    justifyContent: 'center',
+    maxWidth: 100,
+  },
+  donutCenterTitle: {
+    fontFamily: FONTS.sansBold,
+    fontSize: 10,
+    letterSpacing: 0.5,
+  },
+  donutCenterAmount: {
+    fontFamily: FONTS.sansBold,
+    fontSize: 12,
+    fontWeight: '800',
+    marginTop: 2,
+  },
+  catColorDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
   },
 });
