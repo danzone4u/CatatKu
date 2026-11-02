@@ -69,7 +69,7 @@ export default function AnimatedSplashScreen({ onFinish }: Props) {
         <View style={styles.centerContent}>
           <Animated.View
             style={[
-              styles.taglineContainer,
+              styles.logoContainer,
               {
                 opacity: opacityAnim,
                 transform: [{ scale: scaleAnim }, { scale: pulseAnim }],
@@ -77,10 +77,12 @@ export default function AnimatedSplashScreen({ onFinish }: Props) {
             ]}
           >
             <Image
-              source={require('../../assets/tagline.png')}
-              style={styles.taglineImage}
+              source={require('../../assets/logo.png')}
+              style={styles.logoImage}
               resizeMode="contain"
             />
+            <Text style={styles.appTitle}>CatatKu</Text>
+            <Text style={styles.appSubtitle}>Keuangan Rapi, Hidup Terkendali</Text>
           </Animated.View>
 
           <Animated.View style={[styles.loadingContainer, { opacity: opacityAnim }]}>
@@ -132,18 +134,27 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     width: '100%',
   },
-  taglineContainer: {
-    width: '85%',
-    maxWidth: 320,
-    height: 140,
-    justifyContent: 'center',
+  logoContainer: {
     alignItems: 'center',
-    marginBottom: 24,
+    marginBottom: 28,
   },
-  taglineImage: {
-    width: '100%',
-    height: '100%',
-    resizeMode: 'contain',
+  logoImage: {
+    width: 96,
+    height: 96,
+    borderRadius: 24,
+    marginBottom: 14,
+  },
+  appTitle: {
+    fontFamily: FONTS.serifTitle,
+    fontSize: 28,
+    color: PALETTE.primary,
+    letterSpacing: -0.5,
+  },
+  appSubtitle: {
+    fontFamily: FONTS.sansRegular,
+    fontSize: 13,
+    color: PALETTE.inkSecondary,
+    marginTop: 4,
   },
   loadingContainer: {
     alignItems: 'center',
