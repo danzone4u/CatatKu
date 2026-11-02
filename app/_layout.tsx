@@ -1,13 +1,40 @@
 import { Stack } from 'expo-router';
-import { SQLiteProvider } from 'expo-sqlite';
+import { SQLiteProvider, useSQLiteContext } from 'expo-sqlite';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
+import { AppState } from 'react-native';
 import { DATABASE_NAME } from '../src/constants/database';
 import { migrateDbIfNeeded } from '../src/database/schema';
 import { PALETTE } from '../src/constants/theme';
 import PinLockOverlay from '../src/components/PinLockOverlay';
-import { initGoogleDrive } from '../src/utils/googleDrive';
+import { initGoogleDrive, autoSyncToDriveIfNeeded } from '../src/utils/googleDrive';
+
+function AppLifecycleManager() {
+  const db = useSQLiteContext();
+  const appState = useRef(AppState.currentState);
+
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', (nextAppState) => {
+      // Saat aplikasi berpindah dari aktif ke background/inactive, trigger auto-sync
+      if (
+        appState.current === 'active' &&
+        (nextAppState === 'inactive' || nextAppState === 'background')
+      ) {
+        autoSyncToDriveIfNeeded(db).catch((err) =>
+          console.warn('Background autoSync error:', err)
+        );
+      }
+      appState.current = nextAppState;
+    });
+
+    return () => {
+      subscription.remove();
+    };
+  }, [db]);
+
+  return null;
+}
 
 export default function RootLayout() {
   useEffect(() => {
@@ -23,6 +50,7 @@ export default function RootLayout() {
         onError={(err) => console.warn('SQLiteProvider init warning:', err)}
       >
         <StatusBar style="dark" />
+        <AppLifecycleManager />
         <PinLockOverlay />
 
         {/* Navigator Expo Router langsung aktif seketika tanpa jeda splash */}

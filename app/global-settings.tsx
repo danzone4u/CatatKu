@@ -74,6 +74,7 @@ export default function GlobalSettingsScreen() {
   const [driveBackups, setDriveBackups] = useState<DriveBackupFile[]>([]);
   const [showDriveModal, setShowDriveModal] = useState(false);
   const [isSyncingDrive, setIsSyncingDrive] = useState(false);
+  const [autoDriveSync, setAutoDriveSync] = useState(false);
   const [lastDriveBackupTime, setLastDriveBackupTime] = useState<string | null>(null);
 
   // Modern Confirm Modal
@@ -130,6 +131,9 @@ export default function GlobalSettingsScreen() {
 
       const lastBackup = await getSetting(db, 'last_gdrive_backup');
       setLastDriveBackupTime(lastBackup || null);
+
+      const autoSync = await getSetting(db, 'auto_gdrive_sync');
+      setAutoDriveSync(autoSync === '1' || autoSync === 'true');
 
       const pin = await getSetting(db, 'app_pin');
       const pinActive = await getSetting(db, 'pin_enabled');
@@ -814,11 +818,87 @@ export default function GlobalSettingsScreen() {
               </Pressable>
             </View>
 
+            {/* Toggle Auto-Sync Background */}
+            <View
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                backgroundColor: palette.cardMuted,
+                padding: 12,
+                borderRadius: 12,
+                marginTop: 10,
+                marginBottom: 10,
+                borderWidth: 1,
+                borderColor: palette.borderSubtle,
+              }}
+            >
+              <View style={{ flex: 1, paddingRight: 10 }}>
+                <Text style={{ fontSize: 13, fontWeight: '700', color: palette.ink }}>
+                  ⚡ Auto-Sync Otomatis
+                </Text>
+                <Text style={{ fontSize: 11, color: palette.inkMuted, marginTop: 2 }}>
+                  Cadangkan data otomatis ke Drive di latar belakang saat aplikasi diminimize.
+                </Text>
+              </View>
+              <Switch
+                value={autoDriveSync}
+                onValueChange={async (val) => {
+                  setAutoDriveSync(val);
+                  await setSetting(db, 'auto_gdrive_sync', val ? '1' : '0');
+                  if (val) {
+                    showModalAlert('Auto-Sync Aktif', 'CatatKu akan mencadangkan perubahan secara otomatis ke Google Drive di latar belakang.', 'success', '⚡');
+                  }
+                }}
+                trackColor={{ false: palette.border, true: palette.primary }}
+              />
+            </View>
+
+            {/* Tombol Pulihkan Versi Terkini (1-Klik) */}
+            {driveBackups.length > 0 && (
+              <Pressable
+                style={({ pressed }) => [
+                  styles.fullModalBtn,
+                  { backgroundColor: palette.cardMuted, borderColor: palette.primary, borderWidth: 1, marginBottom: 12 },
+                  pressed && { opacity: 0.8 },
+                ]}
+                disabled={isSyncingDrive}
+                onPress={() => {
+                  const newest = driveBackups[0];
+                  setShowDriveModal(false);
+                  setConfirmModal({
+                    visible: true,
+                    type: 'danger',
+                    icon: '⚡',
+                    title: 'Pulihkan Versi Terkini',
+                    message: `Pulihkan ke cadangan terbaru (${formatDate(newest.createdTime)})?\nBerkas: "${newest.name}". Data lokal saat ini akan digantikan.`,
+                    cancelText: 'Batal',
+                    confirmText: 'Ya, Pulihkan Sekarang',
+                    onConfirm: async () => {
+                      closeConfirmModal();
+                      try {
+                        const res = await restoreFromDriveFile(db, newest.id);
+                        if (res.success) {
+                          showModalAlert('Pemulihan Sukses', `Database berhasil dipulihkan dari cadangan terkini Google Drive!\nTotal: ${res.count} catatan.`, 'success', '🎉');
+                        }
+                      } catch (err: any) {
+                        showModalAlert('Gagal Pulihkan', err?.message || 'Gagal memulihkan cadangan terbaru.', 'danger');
+                      }
+                    },
+                  });
+                }}
+              >
+                <Text style={{ fontSize: 13, fontWeight: '700', color: palette.primary, textAlign: 'center' }}>
+                  ⚡ Pulihkan Versi Terkini ({formatDate(driveBackups[0].createdTime)})
+                </Text>
+              </Pressable>
+            )}
+
             {/* Tombol Cadangkan Sekarang */}
             <Pressable
               style={({ pressed }) => [
                 styles.fullModalBtn,
-                { backgroundColor: palette.primary, marginTop: 12, marginBottom: 14 },
+                { backgroundColor: palette.primary, marginTop: 2, marginBottom: 14 },
                 pressed && { opacity: 0.85 },
               ]}
               disabled={isSyncingDrive}

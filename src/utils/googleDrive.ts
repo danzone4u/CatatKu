@@ -1,6 +1,7 @@
 import { GoogleSignin } from '@react-native-google-signin/google-signin';
 import { type SQLiteDatabase } from 'expo-sqlite';
-import { restoreBackup } from './backup';
+import { generateBackupJson, restoreBackup } from './backup';
+import { getSetting, setSetting } from '../database/queries';
 
 export const GDRIVE_SCOPES = [
   'https://www.googleapis.com/auth/drive.appdata',
@@ -148,6 +149,10 @@ export async function uploadBackupToDrive(
   }
 
   const data = await res.json();
+
+  // Otomatis bersihkan cadangan lama agar kuota & daftar tetap ramping (simpan 5 terbaru)
+  cleanOldDriveBackups(5).catch((err) => console.warn('cleanOldDriveBackups warning:', err));
+
   return { success: true, fileId: data.id };
 }
 
@@ -178,6 +183,48 @@ export async function listDriveBackups(): Promise<DriveBackupFile[]> {
 }
 
 /**
+ * Hapus berkas cadangan dari Google Drive berdasarkan ID
+ */
+export async function deleteDriveFile(fileId: string): Promise<boolean> {
+  try {
+    ensureConfigured();
+    const tokens = await GoogleSignin.getTokens();
+    const accessToken = tokens.accessToken;
+
+    const res = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}`, {
+      method: 'DELETE',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+    });
+    return res.ok || res.status === 204;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Kebijakan Retensi: Hapus berkas backup lama jika melebihi batas keepCount
+ */
+export async function cleanOldDriveBackups(keepCount: number = 5): Promise<number> {
+  try {
+    const files = await listDriveBackups();
+    if (files.length <= keepCount) return 0;
+
+    const toDelete = files.slice(keepCount);
+    let deletedCount = 0;
+    for (const f of toDelete) {
+      const ok = await deleteDriveFile(f.id);
+      if (ok) deletedCount++;
+    }
+    return deletedCount;
+  } catch (e) {
+    console.warn('cleanOldDriveBackups error:', e);
+    return 0;
+  }
+}
+
+/**
  * Unduh dan pulihkan data dari salah satu file cadangan di Google Drive
  */
 export async function restoreFromDriveFile(
@@ -201,3 +248,45 @@ export async function restoreFromDriveFile(
   const jsonText = await res.text();
   return await restoreBackup(db, jsonText);
 }
+
+/**
+ * Lakukan Auto-Sync Google Drive di latar belakang jika toggle aktif dan user login
+ */
+let isAutoSyncing = false;
+export async function autoSyncToDriveIfNeeded(db: SQLiteDatabase): Promise<boolean> {
+  if (isAutoSyncing) return false;
+  try {
+    isAutoSyncing = true;
+    const autoSyncSetting = await getSetting(db, 'auto_gdrive_sync');
+    if (autoSyncSetting !== '1' && autoSyncSetting !== 'true') {
+      return false;
+    }
+
+    const user = await getCurrentGoogleUser();
+    if (!user) {
+      return false;
+    }
+
+    // Hindari upload ganda bertubi-tubi dalam waktu singkat (minimal jeda 1 menit)
+    const lastSyncTimeStr = await getSetting(db, 'last_gdrive_backup');
+    const now = Date.now();
+    if (lastSyncTimeStr) {
+      const lastSyncTime = new Date(lastSyncTimeStr).getTime();
+      if (!isNaN(lastSyncTime) && now - lastSyncTime < 60 * 1000) {
+        return false;
+      }
+    }
+
+    const { jsonContent, filename } = await generateBackupJson(db);
+    await uploadBackupToDrive(jsonContent, filename);
+    const nowIso = new Date().toISOString();
+    await setSetting(db, 'last_gdrive_backup', nowIso);
+    return true;
+  } catch (err) {
+    console.warn('autoSyncToDriveIfNeeded warning:', err);
+    return false;
+  } finally {
+    isAutoSyncing = false;
+  }
+}
+
