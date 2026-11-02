@@ -6,9 +6,7 @@
     "orientation": "portrait",
     "icon": "./assets/logo.png",
     "splash": {
-      "image": "./assets/logo.png",
-      "resizeMode": "contain",
-      "backgroundColor": "#FFFFFF"
+      "backgroundColor": "#FAF8F5"
     },
     "userInterfaceStyle": "light",
     "scheme": "dompet",

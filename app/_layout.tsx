@@ -2,27 +2,17 @@ import { Stack } from 'expo-router';
 import { SQLiteProvider } from 'expo-sqlite';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { View, StyleSheet } from 'react-native';
-import { useState, useEffect } from 'react';
+import { useEffect } from 'react';
 import { DATABASE_NAME } from '../src/constants/database';
 import { migrateDbIfNeeded } from '../src/database/schema';
 import { PALETTE } from '../src/constants/theme';
 import PinLockOverlay from '../src/components/PinLockOverlay';
-import AnimatedSplashScreen from '../src/components/AnimatedSplashScreen';
 import { initGoogleDrive } from '../src/utils/googleDrive';
 
 export default function RootLayout() {
-  const [showSplash, setShowSplash] = useState(true);
-
   useEffect(() => {
     // Inisialisasi Google Drive Client SDK
     initGoogleDrive();
-
-    // Pengaman: splash pasti terlepas maksimal dalam 1.2 detik
-    const timer = setTimeout(() => {
-      setShowSplash(false);
-    }, 1200);
-    return () => clearTimeout(timer);
   }, []);
 
   return (
@@ -35,7 +25,7 @@ export default function RootLayout() {
         <StatusBar style="dark" />
         <PinLockOverlay />
 
-        {/* Navigator Expo Router selalu termount sejak awal */}
+        {/* Navigator Expo Router langsung aktif seketika tanpa jeda splash */}
         <Stack
           screenOptions={{
             headerShown: false,
@@ -58,13 +48,6 @@ export default function RootLayout() {
           <Stack.Screen name="recurring" options={{ presentation: 'card', headerShown: false, headerBackVisible: false, headerLeft: () => null }} />
           <Stack.Screen name="debts" options={{ presentation: 'card', headerShown: false, headerBackVisible: false, headerLeft: () => null }} />
         </Stack>
-
-        {/* Splash screen sebagai overlay transisi mulus */}
-        {showSplash && (
-          <View style={[StyleSheet.absoluteFill, { zIndex: 99999, elevation: 99999 }]} pointerEvents="box-none">
-            <AnimatedSplashScreen onFinish={() => setShowSplash(false)} />
-          </View>
-        )}
       </SQLiteProvider>
     </SafeAreaProvider>
   );
