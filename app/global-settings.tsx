@@ -24,9 +24,22 @@ import {
 import {
   exportBackup,
   exportBackupToLocalStorage,
+  generateBackupJson,
   restoreBackup,
 } from '../src/utils/backup';
+import {
+  initGoogleDrive,
+  signInGoogle,
+  signOutGoogle,
+  getCurrentGoogleUser,
+  uploadBackupToDrive,
+  listDriveBackups,
+  restoreFromDriveFile,
+  type GoogleUserInfo,
+  type DriveBackupFile,
+} from '../src/utils/googleDrive';
 import { checkForAppUpdate, openDownloadPage } from '../src/utils/appUpdater';
+import { formatDate } from '../src/utils/date';
 import * as DocumentPicker from 'expo-document-picker';
 import { File } from 'expo-file-system';
 import * as LocalAuthentication from 'expo-local-authentication';
@@ -55,6 +68,13 @@ export default function GlobalSettingsScreen() {
   const [showAboutModal, setShowAboutModal] = useState(false);
   const [showFaqModal, setShowFaqModal] = useState(false);
   const [checkingUpdate, setCheckingUpdate] = useState(false);
+
+  // Google Drive Cloud Backup State
+  const [googleUser, setGoogleUser] = useState<GoogleUserInfo | null>(null);
+  const [driveBackups, setDriveBackups] = useState<DriveBackupFile[]>([]);
+  const [showDriveModal, setShowDriveModal] = useState(false);
+  const [isSyncingDrive, setIsSyncingDrive] = useState(false);
+  const [lastDriveBackupTime, setLastDriveBackupTime] = useState<string | null>(null);
 
   // Modern Confirm Modal
   const [confirmModal, setConfirmModal] = useState<{
@@ -104,6 +124,13 @@ export default function GlobalSettingsScreen() {
 
   const loadSettings = useCallback(async () => {
     try {
+      initGoogleDrive();
+      const user = await getCurrentGoogleUser();
+      setGoogleUser(user);
+
+      const lastBackup = await getSetting(db, 'last_gdrive_backup');
+      setLastDriveBackupTime(lastBackup || null);
+
       const pin = await getSetting(db, 'app_pin');
       const pinActive = await getSetting(db, 'pin_enabled');
       setPinEnabled((pinActive === 'true' || pinActive === '1') && !!pin);
@@ -274,8 +301,61 @@ export default function GlobalSettingsScreen() {
         {/* Seksi 3: Cadangan & Pemulihan Data */}
         <Text style={[styles.sectionTitle, { color: palette.inkSecondary }]}>CADANGAN & DATA (BACKUP)</Text>
         <View style={[styles.card, { backgroundColor: palette.card, borderColor: palette.border }]}>
+          {/* Cloud Backup Google Drive */}
           <Pressable
             style={({ pressed }) => [styles.actionRow, pressed && { opacity: 0.7 }]}
+            onPress={async () => {
+              if (!googleUser) {
+                try {
+                  const user = await signInGoogle();
+                  if (user) {
+                    setGoogleUser(user);
+                    showModalAlert('Terhubung', `Akun Google terhubung:\n${user.email}`, 'success', '☁️');
+                  }
+                } catch (e: any) {
+                  showModalAlert('Gagal Masuk', e?.message || 'Tidak dapat menghubungkan akun Google.', 'danger');
+                }
+              } else {
+                setShowDriveModal(true);
+                try {
+                  setIsSyncingDrive(true);
+                  const files = await listDriveBackups();
+                  setDriveBackups(files);
+                } catch {
+                  // silent error
+                } finally {
+                  setIsSyncingDrive(false);
+                }
+              }
+            }}
+          >
+            <View style={styles.actionLeft}>
+              <Text style={styles.actionIcon}>☁️</Text>
+              <View style={{ flex: 1, paddingRight: 8 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                  <Text style={[styles.actionTitle, { color: palette.ink }]}>Google Drive Cloud Backup</Text>
+                  {googleUser && (
+                    <View style={{ backgroundColor: '#DCFCE7', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6 }}>
+                      <Text style={{ fontSize: 9, fontWeight: '800', color: '#16A34A' }}>AKTIF</Text>
+                    </View>
+                  )}
+                </View>
+                <Text style={[styles.actionDesc, { color: palette.inkMuted }]}>
+                  {googleUser
+                    ? `${googleUser.email} • Terakhir: ${lastDriveBackupTime ? formatDate(lastDriveBackupTime) : 'Belum pernah'}`
+                    : 'Sinkronisasi otomatis & aman ke Google Drive pribadi'}
+                </Text>
+              </View>
+            </View>
+            <Text style={[styles.linkArrow, { color: palette.inkMuted }]}>›</Text>
+          </Pressable>
+
+          <Pressable
+            style={({ pressed }) => [
+              styles.actionRow,
+              { borderTopWidth: 1, borderTopColor: palette.borderSubtle },
+              pressed && { opacity: 0.7 },
+            ]}
             onPress={async () => {
               try {
                 await exportBackup(db);
@@ -712,6 +792,154 @@ export default function GlobalSettingsScreen() {
               onPress={() => setShowAboutModal(false)}
             >
               <Text style={styles.saveModalBtnText}>Tutup</Text>
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Modal Google Drive Cloud Backup */}
+      <Modal visible={showDriveModal} transparent animationType="slide" onRequestClose={() => setShowDriveModal(false)}>
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalCard, { backgroundColor: palette.card, borderColor: palette.border }, isTablet && { maxWidth: 540 }]}>
+            <View style={styles.modalHeaderRow}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <Text style={{ fontSize: 22 }}>☁️</Text>
+                <View>
+                  <Text style={[styles.modalTitle, { color: palette.ink }]}>Google Drive Backup</Text>
+                  <Text style={{ fontSize: 11, color: palette.inkMuted }}>{googleUser?.email}</Text>
+                </View>
+              </View>
+              <Pressable onPress={() => setShowDriveModal(false)} hitSlop={8}>
+                <Text style={[styles.closeText, { color: palette.inkMuted }]}>✕</Text>
+              </Pressable>
+            </View>
+
+            {/* Tombol Cadangkan Sekarang */}
+            <Pressable
+              style={({ pressed }) => [
+                styles.fullModalBtn,
+                { backgroundColor: palette.primary, marginTop: 12, marginBottom: 14 },
+                pressed && { opacity: 0.85 },
+              ]}
+              disabled={isSyncingDrive}
+              onPress={async () => {
+                setIsSyncingDrive(true);
+                try {
+                  const { jsonContent, filename } = await generateBackupJson(db);
+                  await uploadBackupToDrive(jsonContent, filename);
+                  const nowIso = new Date().toISOString();
+                  await setSetting(db, 'last_gdrive_backup', nowIso);
+                  setLastDriveBackupTime(nowIso);
+                  const files = await listDriveBackups();
+                  setDriveBackups(files);
+                  showModalAlert('Cadangan Berhasil', `Data sukses dicadangkan ke Google Drive!\nNama file: ${filename}`, 'success', '☁️');
+                } catch (err: any) {
+                  showModalAlert('Gagal Cadangkan', err?.message || 'Tidak dapat mengunggah cadangan ke Google Drive.', 'danger');
+                } finally {
+                  setIsSyncingDrive(false);
+                }
+              }}
+            >
+              {isSyncingDrive ? (
+                <ActivityIndicator size="small" color="#FFFFFF" />
+              ) : (
+                <Text style={styles.saveModalBtnText}>☁️ Cadangkan ke Drive Sekarang</Text>
+              )}
+            </Pressable>
+
+            {/* Riwayat Berkas Backup di Drive */}
+            <Text style={[styles.faqQ, { color: palette.ink, marginTop: 4, marginBottom: 8 }]}>
+              Berkas Cadangan di Drive ({driveBackups.length})
+            </Text>
+
+            <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: 220, marginBottom: 12 }}>
+              {driveBackups.length === 0 ? (
+                <Text style={{ textAlign: 'center', color: palette.inkMuted, paddingVertical: 18, fontSize: 12 }}>
+                  Belum ada berkas cadangan tersimpan di Google Drive.
+                </Text>
+              ) : (
+                driveBackups.map((f) => (
+                  <View
+                    key={f.id}
+                    style={{
+                      flexDirection: 'row',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      paddingVertical: 10,
+                      paddingHorizontal: 12,
+                      backgroundColor: palette.cardMuted,
+                      borderRadius: 12,
+                      marginBottom: 8,
+                      borderWidth: 1,
+                      borderColor: palette.borderSubtle,
+                    }}
+                  >
+                    <View style={{ flex: 1, marginRight: 10 }}>
+                      <Text style={{ fontSize: 12, fontWeight: '700', color: palette.ink }} numberOfLines={1}>
+                        {f.name}
+                      </Text>
+                      <Text style={{ fontSize: 10, color: palette.inkMuted, marginTop: 2 }}>
+                        {formatDate(f.createdTime)}
+                      </Text>
+                    </View>
+
+                    <Pressable
+                      style={{
+                        paddingHorizontal: 10,
+                        paddingVertical: 6,
+                        backgroundColor: palette.primary,
+                        borderRadius: 8,
+                      }}
+                      onPress={() => {
+                        setShowDriveModal(false);
+                        setConfirmModal({
+                          visible: true,
+                          type: 'danger',
+                          icon: '⚠️',
+                          title: 'Pulihkan dari Drive',
+                          message: `Pulihkan database dari berkas "${f.name}"? Seluruh data saat ini akan ditimpa.`,
+                          cancelText: 'Batal',
+                          confirmText: 'Ya, Pulihkan',
+                          onConfirm: async () => {
+                            closeConfirmModal();
+                            try {
+                              const res = await restoreFromDriveFile(db, f.id);
+                              if (res.success) {
+                                showModalAlert('Sukses', `Data berhasil dipulihkan dari Google Drive! Total ${res.count} catatan.`, 'success', '🎉');
+                              }
+                            } catch (err: any) {
+                              showModalAlert('Gagal', err?.message || 'Gagal memulihkan cadangan dari Google Drive.', 'danger');
+                            }
+                          },
+                        });
+                      }}
+                    >
+                      <Text style={{ fontSize: 11, fontWeight: '700', color: '#FFFFFF' }}>Pulihkan</Text>
+                    </Pressable>
+                  </View>
+                ))
+              )}
+            </ScrollView>
+
+            {/* Logout Google */}
+            <Pressable
+              style={{
+                paddingVertical: 10,
+                alignItems: 'center',
+                borderTopWidth: 1,
+                borderTopColor: palette.borderSubtle,
+              }}
+              onPress={async () => {
+                await signOutGoogle();
+                setGoogleUser(null);
+                setDriveBackups([]);
+                setShowDriveModal(false);
+                showModalAlert('Keluar Akun', 'Akun Google telah diputuskan.', 'info');
+              }}
+            >
+              <Text style={{ fontSize: 12, fontWeight: '700', color: palette.expense }}>
+                Putuskan Sambungan Akun Google
+              </Text>
             </Pressable>
           </View>
         </View>

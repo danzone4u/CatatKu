@@ -23,7 +23,7 @@ export interface BackupPayload {
   };
 }
 
-export async function exportBackup(db: SQLiteDatabase): Promise<{ uri: string; filename: string }> {
+export async function generateBackupJson(db: SQLiteDatabase): Promise<{ jsonContent: string; filename: string }> {
   const [
     cashbooks,
     categories,
@@ -78,6 +78,12 @@ export async function exportBackup(db: SQLiteDatabase): Promise<{ uri: string; f
   const mins = String(now.getMinutes()).padStart(2, '0');
   const secs = String(now.getSeconds()).padStart(2, '0');
   const filename = `CatatKu_Backup_${year}${month}${day}_${hours}${mins}${secs}.json`;
+
+  return { jsonContent, filename };
+}
+
+export async function exportBackup(db: SQLiteDatabase): Promise<{ uri: string; filename: string }> {
+  const { jsonContent, filename } = await generateBackupJson(db);
 
   const file = new File(Paths.document, filename);
   await file.write(jsonContent);
