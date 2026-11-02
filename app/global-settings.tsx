@@ -35,6 +35,7 @@ import {
   uploadBackupToDrive,
   listDriveBackups,
   restoreFromDriveFile,
+  mergeFromDriveFile,
   type GoogleUserInfo,
   type DriveBackupFile,
 } from '../src/utils/googleDrive';
@@ -963,39 +964,77 @@ export default function GlobalSettingsScreen() {
                       </Text>
                     </View>
 
-                    <Pressable
-                      style={{
-                        paddingHorizontal: 10,
-                        paddingVertical: 6,
-                        backgroundColor: palette.primary,
-                        borderRadius: 8,
-                      }}
-                      onPress={() => {
-                        setShowDriveModal(false);
-                        setConfirmModal({
-                          visible: true,
-                          type: 'danger',
-                          icon: '⚠️',
-                          title: 'Pulihkan dari Drive',
-                          message: `Pulihkan database dari berkas "${f.name}"? Seluruh data saat ini akan ditimpa.`,
-                          cancelText: 'Batal',
-                          confirmText: 'Ya, Pulihkan',
-                          onConfirm: async () => {
-                            closeConfirmModal();
-                            try {
-                              const res = await restoreFromDriveFile(db, f.id);
-                              if (res.success) {
-                                showModalAlert('Sukses', `Data berhasil dipulihkan dari Google Drive! Total ${res.count} catatan.`, 'success', '🎉');
+                    <View style={{ flexDirection: 'row', gap: 6 }}>
+                      <Pressable
+                        style={{
+                          paddingHorizontal: 8,
+                          paddingVertical: 6,
+                          backgroundColor: palette.card,
+                          borderColor: palette.primary,
+                          borderWidth: 1,
+                          borderRadius: 8,
+                        }}
+                        onPress={() => {
+                          setShowDriveModal(false);
+                          setConfirmModal({
+                            visible: true,
+                            type: 'info',
+                            icon: '🔄',
+                            title: 'Gabungkan Data (Merge)',
+                            message: `Gabungkan data dari "${f.name}" tanpa menghapus catatan lokal Anda? Transaksi baru akan saling melengkapi.`,
+                            cancelText: 'Batal',
+                            confirmText: 'Ya, Gabungkan',
+                            onConfirm: async () => {
+                              closeConfirmModal();
+                              try {
+                                const res = await mergeFromDriveFile(db, f.id);
+                                if (res.success) {
+                                  showModalAlert('Penggabungan Selesai', res.message, 'success', '🎉');
+                                }
+                              } catch (err: any) {
+                                showModalAlert('Gagal', err?.message || 'Gagal menggabungkan data.', 'danger');
                               }
-                            } catch (err: any) {
-                              showModalAlert('Gagal', err?.message || 'Gagal memulihkan cadangan dari Google Drive.', 'danger');
-                            }
-                          },
-                        });
-                      }}
-                    >
-                      <Text style={{ fontSize: 11, fontWeight: '700', color: '#FFFFFF' }}>Pulihkan</Text>
-                    </Pressable>
+                            },
+                          });
+                        }}
+                      >
+                        <Text style={{ fontSize: 11, fontWeight: '700', color: palette.primary }}>Gabung</Text>
+                      </Pressable>
+
+                      <Pressable
+                        style={{
+                          paddingHorizontal: 8,
+                          paddingVertical: 6,
+                          backgroundColor: palette.primary,
+                          borderRadius: 8,
+                        }}
+                        onPress={() => {
+                          setShowDriveModal(false);
+                          setConfirmModal({
+                            visible: true,
+                            type: 'danger',
+                            icon: '⚠️',
+                            title: 'Pulihkan dari Drive',
+                            message: `Pulihkan database dari berkas "${f.name}"? Seluruh data saat ini akan ditimpa.`,
+                            cancelText: 'Batal',
+                            confirmText: 'Ya, Pulihkan',
+                            onConfirm: async () => {
+                              closeConfirmModal();
+                              try {
+                                const res = await restoreFromDriveFile(db, f.id);
+                                if (res.success) {
+                                  showModalAlert('Sukses', `Data berhasil dipulihkan dari Google Drive! Total ${res.count} catatan.`, 'success', '🎉');
+                                }
+                              } catch (err: any) {
+                                showModalAlert('Gagal', err?.message || 'Gagal memulihkan cadangan dari Google Drive.', 'danger');
+                              }
+                            },
+                          });
+                        }}
+                      >
+                        <Text style={{ fontSize: 11, fontWeight: '700', color: '#FFFFFF' }}>Timpa</Text>
+                      </Pressable>
+                    </View>
                   </View>
                 ))
               )}

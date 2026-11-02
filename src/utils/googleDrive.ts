@@ -1,6 +1,6 @@
 import { GoogleSignin } from '@react-native-google-signin/google-signin';
 import { type SQLiteDatabase } from 'expo-sqlite';
-import { generateBackupJson, restoreBackup } from './backup';
+import { generateBackupJson, restoreBackup, mergeBackupData } from './backup';
 import { getSetting, setSetting } from '../database/queries';
 
 export const GDRIVE_SCOPES = [
@@ -250,9 +250,89 @@ export async function restoreFromDriveFile(
 }
 
 /**
- * Lakukan Auto-Sync Google Drive di latar belakang jika toggle aktif dan user login
+ * Status lock auto sync
  */
 let isAutoSyncing = false;
+
+/**
+ * Unduh dan lebur (merge) data dari cloud Drive tanpa menghapus data lokal
+ */
+export async function mergeFromDriveFile(
+  db: SQLiteDatabase,
+  fileId: string
+): Promise<{ success: boolean; insertedCount: number; message: string }> {
+  ensureConfigured();
+  const tokens = await GoogleSignin.getTokens();
+  const accessToken = tokens.accessToken;
+
+  const res = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, {
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+  });
+
+  if (!res.ok) {
+    throw new Error('Gagal mengunduh file cadangan dari Google Drive');
+  }
+
+  const jsonText = await res.text();
+  return await mergeBackupData(db, jsonText);
+}
+
+/**
+ * Auto-Pull & Merge: Periksa apakah ada data baru di cloud dari HP lain
+ * Dijalankan saat aplikasi dibuka / resume
+ */
+export async function autoPullAndMergeIfNeeded(db: SQLiteDatabase): Promise<boolean> {
+  if (isAutoSyncing) return false;
+  try {
+    const autoSyncSetting = await getSetting(db, 'auto_gdrive_sync');
+    if (autoSyncSetting !== '1' && autoSyncSetting !== 'true') {
+      return false;
+    }
+
+    const user = await getCurrentGoogleUser();
+    if (!user) return false;
+
+    const files = await listDriveBackups();
+    if (!files || files.length === 0) return false;
+
+    const latestRemote = files[0];
+    const latestRemoteTime = new Date(latestRemote.createdTime).getTime();
+
+    const lastMergedTimeStr = await getSetting(db, 'last_merged_remote_time');
+    const lastLocalBackupStr = await getSetting(db, 'last_gdrive_backup');
+
+    const lastLocalTime = lastLocalBackupStr ? new Date(lastLocalBackupStr).getTime() : 0;
+    const lastMergedTime = lastMergedTimeStr ? new Date(lastMergedTimeStr).getTime() : 0;
+
+    // Jika file remote lebih baru daripada yang pernah di-merge atau di-upload lokal
+    if (latestRemoteTime > lastMergedTime && latestRemoteTime > lastLocalTime + 5000) {
+      isAutoSyncing = true;
+      const res = await mergeFromDriveFile(db, latestRemote.id);
+      await setSetting(db, 'last_merged_remote_time', latestRemote.createdTime);
+
+      // Jika ada data baru yang masuk dari HP lain, re-upload versi gabungan agar sinkron sempurna
+      if (res.insertedCount > 0) {
+        const { jsonContent, filename } = await generateBackupJson(db);
+        await uploadBackupToDrive(jsonContent, filename);
+        await setSetting(db, 'last_gdrive_backup', new Date().toISOString());
+      }
+      return true;
+    }
+
+    return false;
+  } catch (err) {
+    console.warn('autoPullAndMergeIfNeeded warning:', err);
+    return false;
+  } finally {
+    isAutoSyncing = false;
+  }
+}
+
+/**
+ * Lakukan Auto-Sync Google Drive di latar belakang jika toggle aktif dan user login
+ */
 export async function autoSyncToDriveIfNeeded(db: SQLiteDatabase): Promise<boolean> {
   if (isAutoSyncing) return false;
   try {

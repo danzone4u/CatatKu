@@ -54,6 +54,7 @@ import {
   getCurrentGoogleUser,
   listDriveBackups,
   restoreFromDriveFile,
+  autoPullAndMergeIfNeeded,
   type DriveBackupFile,
 } from '../src/utils/googleDrive';
 import { formatDate } from '../src/utils/date';
@@ -284,9 +285,13 @@ export default function CashbookListScreen() {
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
+    try {
+      // Saat pull-to-refresh, cek juga sinkronisasi cloud drive
+      await autoPullAndMergeIfNeeded(db);
+    } catch {}
     await loadData();
     setRefreshing(false);
-  }, [loadData]);
+  }, [db, loadData]);
 
   const handleSelectBook = (book: CashbookStats) => {
     setActiveCashbook(book);

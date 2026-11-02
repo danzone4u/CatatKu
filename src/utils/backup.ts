@@ -443,6 +443,210 @@ export async function restoreBackup(
   };
 }
 
+/**
+ * Smart Conflict Merge (Penggabungan Otomatis Tanpa Timpa Data)
+ * Menggabungkan data dari cloud Drive dengan data lokal HP.
+ * Transaksi yang baru di HP lain akan masuk, transaksi baru di HP ini tidak akan hilang.
+ */
+export async function mergeBackupData(
+  db: SQLiteDatabase,
+  jsonText: string
+): Promise<{ success: boolean; insertedCount: number; message: string }> {
+  let parsed: any;
+  try {
+    parsed = JSON.parse(jsonText);
+  } catch {
+    throw new Error('Format file backup tidak valid (bukan JSON yang sah)');
+  }
+
+  if (!parsed || !parsed.data) {
+    throw new Error('File tidak memiliki data Catatan');
+  }
+
+  const { data } = parsed;
+  let insertedTxCount = 0;
+
+  await db.withTransactionAsync(async () => {
+    // 1. Merge cashbooks
+    const bookIdMap = new Map<number, number>();
+    if (Array.isArray(data.cashbooks)) {
+      for (const b of data.cashbooks) {
+        const existing = await db.getFirstAsync<{ id: number }>(
+          'SELECT id FROM cashbooks WHERE name = ?',
+          b.name
+        );
+        if (existing) {
+          bookIdMap.set(b.id, existing.id);
+        } else {
+          const res = await db.runAsync(
+            `INSERT INTO cashbooks (name, icon, color, budget_limit, is_archived, is_default, type, created_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+            b.name,
+            b.icon ?? '📖',
+            b.color ?? '#2563EB',
+            b.budget_limit ?? null,
+            b.is_archived ?? 0,
+            b.is_default ?? 0,
+            b.type ?? 'personal',
+            b.created_at ?? new Date().toISOString()
+          );
+          bookIdMap.set(b.id, res.lastInsertRowId);
+        }
+      }
+    }
+
+    // 2. Merge categories
+    const catIdMap = new Map<number, number>();
+    if (Array.isArray(data.categories)) {
+      for (const c of data.categories) {
+        const existing = await db.getFirstAsync<{ id: number }>(
+          'SELECT id FROM categories WHERE name = ?',
+          c.name
+        );
+        if (existing) {
+          catIdMap.set(c.id, existing.id);
+        } else {
+          const res = await db.runAsync(
+            `INSERT INTO categories (name, icon, is_default) VALUES (?, ?, ?)`,
+            c.name,
+            c.icon ?? '📦',
+            c.is_default ?? 0
+          );
+          catIdMap.set(c.id, res.lastInsertRowId);
+        }
+      }
+    }
+
+    // 3. Merge accounts
+    const accIdMap = new Map<number, number>();
+    if (Array.isArray(data.accounts)) {
+      for (const a of data.accounts) {
+        const targetBookId = bookIdMap.get(a.cashbook_id) ?? a.cashbook_id ?? 1;
+        const existing = await db.getFirstAsync<{ id: number }>(
+          'SELECT id FROM accounts WHERE cashbook_id = ? AND name = ?',
+          targetBookId,
+          a.name
+        );
+        if (existing) {
+          accIdMap.set(a.id, existing.id);
+        } else {
+          const res = await db.runAsync(
+            `INSERT INTO accounts (cashbook_id, name, type, balance, min_balance, icon, color, is_default, sort_order, created_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            targetBookId,
+            a.name,
+            a.type,
+            a.balance ?? 0,
+            a.min_balance ?? 0,
+            a.icon ?? '💵',
+            a.color ?? '#16A34A',
+            a.is_default ?? 0,
+            a.sort_order ?? 0,
+            a.created_at ?? new Date().toISOString()
+          );
+          accIdMap.set(a.id, res.lastInsertRowId);
+        }
+      }
+    }
+
+    // Default account fallback
+    let fallbackAccId = 1;
+    const firstAcc = await db.getFirstAsync<{ id: number }>('SELECT id FROM accounts LIMIT 1');
+    if (firstAcc) fallbackAccId = firstAcc.id;
+
+    // 4. Merge transactions (Upsert berdasarkan kesamaan tanggal, jam created_at, jumlah, dan catatan)
+    if (Array.isArray(data.transactions)) {
+      for (const t of data.transactions) {
+        const targetBookId = bookIdMap.get(t.cashbook_id) ?? t.cashbook_id ?? 1;
+        const targetCatId = catIdMap.get(t.category_id) ?? t.category_id ?? 1;
+        const targetAccId = t.account_id ? (accIdMap.get(t.account_id) ?? fallbackAccId) : fallbackAccId;
+
+        // Cek duplikasi berdasarkan sidik jari transaksi
+        const existingTx = await db.getFirstAsync<{ id: number; is_void: number }>(
+          `SELECT id, is_void FROM transactions
+           WHERE cashbook_id = ? AND amount = ? AND date = ? AND created_at = ? AND note = ?`,
+          targetBookId,
+          t.amount,
+          t.date,
+          t.created_at,
+          t.note ?? ''
+        );
+
+        if (!existingTx) {
+          await db.runAsync(
+            `INSERT INTO transactions (cashbook_id, account_id, type, amount, category_id, note, date, receipt_image_uri, is_void, void_reason, voided_at, created_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            targetBookId,
+            targetAccId,
+            t.type,
+            t.amount,
+            targetCatId,
+            t.note ?? '',
+            t.date,
+            t.receipt_image_uri ?? null,
+            t.is_void ?? 0,
+            t.void_reason ?? null,
+            t.voided_at ?? null,
+            t.created_at ?? new Date().toISOString()
+          );
+          insertedTxCount++;
+        } else if (t.is_void && !existingTx.is_void) {
+          // Sinkronkan status void jika di cloud sudah di-void
+          await db.runAsync(
+            `UPDATE transactions SET is_void = 1, void_reason = ?, voided_at = ? WHERE id = ?`,
+            t.void_reason ?? 'Void via sync',
+            t.voided_at ?? new Date().toISOString(),
+            existingTx.id
+          );
+        }
+      }
+    }
+
+    // 5. Merge debts
+    if (Array.isArray(data.debts)) {
+      for (const d of data.debts) {
+        const targetBookId = bookIdMap.get(d.cashbook_id) ?? d.cashbook_id ?? 1;
+        const targetAccId = d.account_id ? (accIdMap.get(d.account_id) ?? fallbackAccId) : fallbackAccId;
+
+        const existingDebt = await db.getFirstAsync<{ id: number; is_paid: number }>(
+          `SELECT id, is_paid FROM debts
+           WHERE cashbook_id = ? AND person_name = ? AND amount = ? AND date = ? AND created_at = ?`,
+          targetBookId,
+          d.person_name,
+          d.amount,
+          d.date,
+          d.created_at
+        );
+
+        if (!existingDebt) {
+          await db.runAsync(
+            `INSERT INTO debts (cashbook_id, account_id, type, person_name, amount, note, due_date, is_paid, date, created_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            targetBookId,
+            targetAccId,
+            d.type,
+            d.person_name,
+            d.amount,
+            d.note ?? '',
+            d.due_date ?? null,
+            d.is_paid ?? 0,
+            d.date,
+            d.created_at ?? new Date().toISOString()
+          );
+        } else if (d.is_paid && !existingDebt.is_paid) {
+          await db.runAsync(`UPDATE debts SET is_paid = 1 WHERE id = ?`, existingDebt.id);
+        }
+      }
+    }
+  });
+
+  return {
+    success: true,
+    insertedCount: insertedTxCount,
+    message: `Sinkronisasi selesai: ${insertedTxCount} catatan baru berhasil digabungkan.`,
+  };
+}
+
 // ─── Ekspor & Impor Khusus 1 Buku Kas (P2P Kas Organisasi / Tim) ───
 export async function exportSingleCashbook(
   db: SQLiteDatabase,

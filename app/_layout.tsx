@@ -8,14 +8,29 @@ import { DATABASE_NAME } from '../src/constants/database';
 import { migrateDbIfNeeded } from '../src/database/schema';
 import { PALETTE } from '../src/constants/theme';
 import PinLockOverlay from '../src/components/PinLockOverlay';
-import { initGoogleDrive, autoSyncToDriveIfNeeded } from '../src/utils/googleDrive';
+import { initGoogleDrive, autoSyncToDriveIfNeeded, autoPullAndMergeIfNeeded } from '../src/utils/googleDrive';
 
 function AppLifecycleManager() {
   const db = useSQLiteContext();
   const appState = useRef(AppState.currentState);
 
   useEffect(() => {
+    // Saat aplikasi pertama kali termount, cek apakah ada data baru dari perangkat lain di cloud
+    autoPullAndMergeIfNeeded(db).catch((err) =>
+      console.warn('Initial autoPullAndMerge error:', err)
+    );
+
     const subscription = AppState.addEventListener('change', (nextAppState) => {
+      // Saat aplikasi dibuka / kembali aktif, cek data baru dari perangkat lain
+      if (
+        appState.current?.match(/inactive|background/) &&
+        nextAppState === 'active'
+      ) {
+        autoPullAndMergeIfNeeded(db).catch((err) =>
+          console.warn('Resume autoPullAndMerge error:', err)
+        );
+      }
+
       // Saat aplikasi berpindah dari aktif ke background/inactive, trigger auto-sync
       if (
         appState.current === 'active' &&
