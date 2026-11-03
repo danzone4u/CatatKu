@@ -13,6 +13,8 @@ interface ModernConfirmModalProps {
   message: string;
   cancelText?: string;
   confirmText?: string;
+  neutralText?: string;
+  onNeutral?: () => void;
   requiredKeyword?: string;
   onCancel?: () => void;
   onConfirm: () => void;
@@ -26,6 +28,8 @@ export function ModernConfirmModal({
   message,
   cancelText = 'Batal',
   confirmText = 'Lanjutkan',
+  neutralText,
+  onNeutral,
   requiredKeyword,
   onCancel,
   onConfirm,
@@ -174,6 +178,24 @@ export function ModernConfirmModal({
               <Text style={[styles.btnConfirmText, { color: colors.confirmBtnText }]}>{confirmText}</Text>
             </Pressable>
           </View>
+
+          {neutralText && onNeutral ? (
+            <Pressable
+              style={({ pressed }) => [
+                {
+                  marginTop: 10,
+                  paddingVertical: 6,
+                  alignItems: 'center',
+                  opacity: pressed ? 0.6 : 1,
+                },
+              ]}
+              onPress={onNeutral}
+            >
+              <Text style={{ fontSize: 12, color: palette.inkMuted, textDecorationLine: 'underline' }}>
+                {neutralText}
+              </Text>
+            </Pressable>
+          ) : null}
         </View>
       </View>
     </Modal>

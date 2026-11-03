@@ -51,13 +51,8 @@ import { checkForAppUpdate, openDownloadPage, type UpdateCheckResult } from '../
 import OnboardingModal from '../src/components/OnboardingModal';
 import { ModernConfirmModal, type ModalType } from '../src/components/ModernConfirmModal';
 import {
-  getCurrentGoogleUser,
-  listDriveBackups,
-  restoreFromDriveFile,
   autoPullAndMergeIfNeeded,
-  type DriveBackupFile,
 } from '../src/utils/googleDrive';
-import { formatDate } from '../src/utils/date';
 
 interface ShortcutItem {
   id: string;
@@ -120,9 +115,6 @@ export default function CashbookListScreen() {
 
   // App Update Notification modal state
   const [availableUpdate, setAvailableUpdate] = useState<UpdateCheckResult | null>(null);
-
-  // Restore Cloud Prompt State (HP Baru / Database Kosong)
-  const [discoveredCloudBackup, setDiscoveredCloudBackup] = useState<DriveBackupFile | null>(null);
 
   const [modalAlert, setModalAlert] = useState<{
     visible: boolean;
@@ -246,32 +238,6 @@ export default function CashbookListScreen() {
     }
   }, [db]);
 
-  const checkStartupCloudBackup = useCallback(async () => {
-    try {
-      // Cek apakah database masih bersih/kosong
-      const countRow = await db.getFirstAsync<{ cnt: number }>('SELECT COUNT(*) as cnt FROM transactions');
-      if (countRow && countRow.cnt > 0) {
-        return;
-      }
-
-      // Cek apakah sudah pernah diperiksa/dilewati sesi ini
-      const alreadyChecked = await getSetting(db, 'has_prompted_cloud_restore');
-      if (alreadyChecked === '1') {
-        return;
-      }
-
-      const user = await getCurrentGoogleUser();
-      if (!user) return;
-
-      const files = await listDriveBackups();
-      if (files && files.length > 0) {
-        setDiscoveredCloudBackup(files[0]);
-      }
-    } catch {
-      // Silent error jika offline atau Google belum login
-    }
-  }, [db]);
-
   useFocusEffect(
     useCallback(() => {
       initTheme(db);
@@ -279,8 +245,7 @@ export default function CashbookListScreen() {
       loadData();
       loadShortcutSettings();
       checkStartupUpdate();
-      checkStartupCloudBackup();
-    }, [db, initTheme, checkOnboarding, loadData, loadShortcutSettings, checkStartupUpdate, checkStartupCloudBackup])
+    }, [db, initTheme, checkOnboarding, loadData, loadShortcutSettings, checkStartupUpdate])
   );
 
   const onRefresh = useCallback(async () => {
@@ -1007,50 +972,23 @@ export default function CashbookListScreen() {
         type="info"
         icon="🚀"
         title={`Pembaruan Tersedia (v${availableUpdate?.latestVersion})`}
-        message={`Versi baru CatatKu v${availableUpdate?.latestVersion} sudah tersedia!\n\nCatatan Rilis:\n${availableUpdate?.releaseNotes || 'Peningkatan performa dan pembaruan sistem.'}`}
-        confirmText="Unduh Pembaruan"
-        cancelText="Nanti Saja"
+        message={`Versi baru CatatKu v${availableUpdate?.latestVersion} sudah tersedia.\n\nCatatan Rilis:\n${availableUpdate?.releaseNotes || 'Peningkatan performa dan stabilitas.'}`}
+        confirmText="Unduh"
+        cancelText="Nanti"
+        neutralText="Jangan ingatkan lagi untuk versi ini"
         onConfirm={() => {
           const url = availableUpdate?.downloadUrl;
           setAvailableUpdate(null);
           openDownloadPage(url);
         }}
-        onCancel={async () => {
+        onCancel={() => {
+          setAvailableUpdate(null);
+        }}
+        onNeutral={async () => {
           if (availableUpdate?.latestVersion) {
             await setSetting(db, 'dismissed_update_version', availableUpdate.latestVersion);
           }
           setAvailableUpdate(null);
-        }}
-      />
-
-      {/* Cloud Restore Detection Modal (HP Baru / Database Kosong) */}
-      <ModernConfirmModal
-        visible={Boolean(discoveredCloudBackup)}
-        type="info"
-        icon="☁️"
-        title="Ditemukan Cadangan Cloud"
-        message={`Ditemukan berkas cadangan data di Google Drive:\n"${discoveredCloudBackup?.name}" (${discoveredCloudBackup ? formatDate(discoveredCloudBackup.createdTime) : ''}).\n\nApakah Anda ingin memulihkan seluruh catatan keuangan Anda sekarang?`}
-        confirmText="Ya, Pulihkan Sekarang"
-        cancelText="Nanti / Mulai Baru"
-        onConfirm={async () => {
-          const file = discoveredCloudBackup;
-          setDiscoveredCloudBackup(null);
-          await setSetting(db, 'has_prompted_cloud_restore', '1');
-          if (file) {
-            try {
-              const res = await restoreFromDriveFile(db, file.id);
-              if (res.success) {
-                showAlert('Pemulihan Sukses', `Data CatatKu berhasil dipulihkan dari Google Drive (${res.count} catatan)!`, 'success', '🎉');
-                await loadData();
-              }
-            } catch (err: any) {
-              showAlert('Gagal Pulihkan', err?.message || 'Tidak dapat memulihkan cadangan dari Google Drive.', 'danger');
-            }
-          }
-        }}
-        onCancel={async () => {
-          await setSetting(db, 'has_prompted_cloud_restore', '1');
-          setDiscoveredCloudBackup(null);
         }}
       />
     </View>
