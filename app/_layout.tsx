@@ -9,33 +9,48 @@ import { migrateDbIfNeeded } from '../src/database/schema';
 import { PALETTE } from '../src/constants/theme';
 import PinLockOverlay from '../src/components/PinLockOverlay';
 import { initGoogleDrive, autoSyncToDriveIfNeeded, autoPullAndMergeIfNeeded } from '../src/utils/googleDrive';
+import { syncWithSupabase, setupSupabaseRealtime } from '../src/services/supabaseSync';
 
 function AppLifecycleManager() {
   const db = useSQLiteContext();
   const appState = useRef(AppState.currentState);
 
   useEffect(() => {
-    // Saat aplikasi pertama kali termount, cek apakah ada data baru dari perangkat lain di cloud
+    // 1. Sinkronisasi awal dengan Supabase Cloud (Background)
+    syncWithSupabase(db).catch((err) =>
+      console.warn('Initial syncWithSupabase error:', err)
+    );
+
+    // 2. Pasang realtime channel listener Supabase
+    const cleanupRealtime = setupSupabaseRealtime(db);
+
+    // 3. Auto-pull Google Drive (cadangan sekunder)
     autoPullAndMergeIfNeeded(db).catch((err) =>
       console.warn('Initial autoPullAndMerge error:', err)
     );
 
     const subscription = AppState.addEventListener('change', (nextAppState) => {
-      // Saat aplikasi dibuka / kembali aktif, cek data baru dari perangkat lain
+      // Saat aplikasi dibuka / kembali aktif
       if (
         appState.current?.match(/inactive|background/) &&
         nextAppState === 'active'
       ) {
+        syncWithSupabase(db).catch((err) =>
+          console.warn('Resume syncWithSupabase error:', err)
+        );
         autoPullAndMergeIfNeeded(db).catch((err) =>
           console.warn('Resume autoPullAndMerge error:', err)
         );
       }
 
-      // Saat aplikasi berpindah dari aktif ke background/inactive, trigger auto-sync
+      // Saat aplikasi berpindah ke background, push ke Supabase & Google Drive
       if (
         appState.current === 'active' &&
         (nextAppState === 'inactive' || nextAppState === 'background')
       ) {
+        syncWithSupabase(db).catch((err) =>
+          console.warn('Background syncWithSupabase error:', err)
+        );
         autoSyncToDriveIfNeeded(db).catch((err) =>
           console.warn('Background autoSync error:', err)
         );
@@ -45,6 +60,7 @@ function AppLifecycleManager() {
 
     return () => {
       subscription.remove();
+      if (cleanupRealtime) cleanupRealtime();
     };
   }, [db]);
 

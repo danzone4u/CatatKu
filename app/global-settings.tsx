@@ -41,6 +41,7 @@ import {
 } from '../src/utils/googleDrive';
 import { checkForAppUpdate, openDownloadPage } from '../src/utils/appUpdater';
 import { formatDate } from '../src/utils/date';
+import { syncWithSupabase } from '../src/services/supabaseSync';
 import * as DocumentPicker from 'expo-document-picker';
 import { File } from 'expo-file-system';
 import * as LocalAuthentication from 'expo-local-authentication';
@@ -77,6 +78,10 @@ export default function GlobalSettingsScreen() {
   const [isSyncingDrive, setIsSyncingDrive] = useState(false);
   const [autoDriveSync, setAutoDriveSync] = useState(false);
   const [lastDriveBackupTime, setLastDriveBackupTime] = useState<string | null>(null);
+
+  // Supabase Sync State
+  const [isSyncingSupabase, setIsSyncingSupabase] = useState(false);
+  const [lastSupabaseSyncTime, setLastSupabaseSyncTime] = useState<string | null>(null);
 
   // Modern Confirm Modal
   const [confirmModal, setConfirmModal] = useState<{
@@ -132,6 +137,9 @@ export default function GlobalSettingsScreen() {
 
       const lastBackup = await getSetting(db, 'last_gdrive_backup');
       setLastDriveBackupTime(lastBackup || null);
+
+      const lastSupa = await getSetting(db, 'last_supabase_sync');
+      setLastSupabaseSyncTime(lastSupa || null);
 
       const autoSync = await getSetting(db, 'auto_gdrive_sync');
       setAutoDriveSync(autoSync === '1' || autoSync === 'true');
@@ -306,9 +314,59 @@ export default function GlobalSettingsScreen() {
         {/* Seksi 3: Cadangan & Pemulihan Data */}
         <Text style={[styles.sectionTitle, { color: palette.inkSecondary }]}>CADANGAN & DATA (BACKUP)</Text>
         <View style={[styles.card, { backgroundColor: palette.card, borderColor: palette.border }]}>
-          {/* Cloud Backup Google Drive */}
+          {/* Supabase Realtime Sync */}
           <Pressable
             style={({ pressed }) => [styles.actionRow, pressed && { opacity: 0.7 }]}
+            disabled={isSyncingSupabase}
+            onPress={async () => {
+              setIsSyncingSupabase(true);
+              try {
+                const res = await syncWithSupabase(db);
+                const nowIso = new Date().toISOString();
+                setLastSupabaseSyncTime(nowIso);
+                showModalAlert(
+                  'Sinkronisasi Sukses',
+                  `Supabase Cloud Sync Berhasil!\n\n⬆️ Diunggah: ${res.pushed} data\n⬇️ Ditarik: ${res.pulled} data baru`,
+                  'success',
+                  '⚡'
+                );
+              } catch (e: any) {
+                showModalAlert('Gagal Sinkron', e?.message || 'Gagal menyambung ke Supabase Cloud.', 'danger');
+              } finally {
+                setIsSyncingSupabase(false);
+              }
+            }}
+          >
+            <View style={styles.actionLeft}>
+              <Text style={styles.actionIcon}>⚡</Text>
+              <View style={{ flex: 1, paddingRight: 8 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                  <Text style={[styles.actionTitle, { color: palette.ink }]}>Supabase Realtime Cloud Sync</Text>
+                  <View style={{ backgroundColor: '#DCFCE7', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6 }}>
+                    <Text style={{ fontSize: 9, fontWeight: '800', color: '#16A34A' }}>REALTIME</Text>
+                  </View>
+                </View>
+                <Text style={[styles.actionDesc, { color: palette.inkMuted }]}>
+                  {lastSupabaseSyncTime
+                    ? `Terakhir sync: ${formatDate(lastSupabaseSyncTime)}`
+                    : 'Sinkronisasi instan antar HP dengan Postgres Cloud'}
+                </Text>
+              </View>
+            </View>
+            {isSyncingSupabase ? (
+              <ActivityIndicator size="small" color={palette.primary} />
+            ) : (
+              <Text style={[styles.linkArrow, { color: palette.inkMuted }]}>›</Text>
+            )}
+          </Pressable>
+
+          {/* Cloud Backup Google Drive */}
+          <Pressable
+            style={({ pressed }) => [
+              styles.actionRow,
+              { borderTopWidth: 1, borderTopColor: palette.borderSubtle },
+              pressed && { opacity: 0.7 },
+            ]}
             onPress={async () => {
               if (!googleUser) {
                 try {
