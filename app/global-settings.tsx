@@ -36,6 +36,7 @@ import {
   listDriveBackups,
   restoreFromDriveFile,
   mergeFromDriveFile,
+  deleteDriveBackupFile,
   type GoogleUserInfo,
   type DriveBackupFile,
 } from '../src/utils/googleDrive';
@@ -1093,24 +1094,58 @@ export default function GlobalSettingsScreen() {
                             type: 'danger',
                             icon: '⚠️',
                             title: 'Pulihkan dari Drive',
-                            message: `Pulihkan database dari berkas "${f.name}"? Seluruh data saat ini akan ditimpa.`,
+                            message: `Pulihkan data dari "${f.name}"? Data lokal saat ini akan ditimpa.`,
                             cancelText: 'Batal',
-                            confirmText: 'Ya, Pulihkan',
+                            confirmText: 'Pulihkan',
                             onConfirm: async () => {
                               closeConfirmModal();
                               try {
                                 const res = await restoreFromDriveFile(db, f.id);
                                 if (res.success) {
-                                  showModalAlert('Sukses', `Data berhasil dipulihkan dari Google Drive! Total ${res.count} catatan.`, 'success', '🎉');
+                                  showModalAlert('Selesai', `Data berhasil dipulihkan (${res.count} catatan).`, 'success', '🎉');
                                 }
                               } catch (err: any) {
-                                showModalAlert('Gagal', err?.message || 'Gagal memulihkan cadangan dari Google Drive.', 'danger');
+                                showModalAlert('Gagal', err?.message || 'Gagal memulihkan cadangan.', 'danger');
                               }
                             },
                           });
                         }}
                       >
                         <Text style={{ fontSize: 11, fontWeight: '700', color: '#FFFFFF' }}>Timpa</Text>
+                      </Pressable>
+
+                      <Pressable
+                        style={{
+                          paddingHorizontal: 8,
+                          paddingVertical: 6,
+                          backgroundColor: isDarkMode ? 'rgba(239, 68, 68, 0.2)' : '#FEE2E2',
+                          borderRadius: 8,
+                        }}
+                        onPress={() => {
+                          setShowDriveModal(false);
+                          setConfirmModal({
+                            visible: true,
+                            type: 'danger',
+                            icon: '🗑️',
+                            title: 'Hapus Cadangan',
+                            message: `Hapus berkas "${f.name}" dari Google Drive?`,
+                            cancelText: 'Batal',
+                            confirmText: 'Hapus',
+                            onConfirm: async () => {
+                              closeConfirmModal();
+                              try {
+                                await deleteDriveBackupFile(f.id);
+                                const updatedFiles = await listDriveBackups();
+                                setDriveBackups(updatedFiles);
+                                showModalAlert('Terhapus', 'Berkas cadangan berhasil dihapus.', 'success', '🗑️');
+                              } catch (err: any) {
+                                showModalAlert('Gagal Hapus', err?.message || 'Gagal menghapus berkas.', 'danger');
+                              }
+                            },
+                          });
+                        }}
+                      >
+                        <Text style={{ fontSize: 11, fontWeight: '700', color: palette.expense }}>Hapus</Text>
                       </Pressable>
                     </View>
                   </View>

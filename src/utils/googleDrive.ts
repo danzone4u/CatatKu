@@ -280,6 +280,28 @@ export async function mergeFromDriveFile(
 }
 
 /**
+ * Hapus satu berkas cadangan dari Google Drive
+ */
+export async function deleteDriveBackupFile(fileId: string): Promise<boolean> {
+  ensureConfigured();
+  const tokens = await GoogleSignin.getTokens();
+  const accessToken = tokens.accessToken;
+
+  const res = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}`, {
+    method: 'DELETE',
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+  });
+
+  if (!res.ok && res.status !== 404) {
+    throw new Error('Gagal menghapus file dari Google Drive');
+  }
+
+  return true;
+}
+
+/**
  * Auto-Pull & Merge: Periksa apakah ada data baru di cloud dari HP lain
  * Dijalankan saat aplikasi dibuka / resume
  */
