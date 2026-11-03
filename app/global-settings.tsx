@@ -330,13 +330,13 @@ export default function GlobalSettingsScreen() {
                 const nowIso = new Date().toISOString();
                 setLastSupabaseSyncTime(nowIso);
                 showModalAlert(
-                  'Sinkronisasi Sukses',
-                  `Supabase Cloud Sync Berhasil!\n\n⬆️ Diunggah: ${res.pushed} data\n⬇️ Ditarik: ${res.pulled} data baru`,
+                  'Sinkron Selesai',
+                  `${res.pushed} terkirim, ${res.pulled} diterima.`,
                   'success',
                   '⚡'
                 );
               } catch (e: any) {
-                showModalAlert('Gagal Sinkron', e?.message || 'Gagal menyambung ke Supabase Cloud.', 'danger');
+                showModalAlert('Gagal Sinkron', e?.message || 'Koneksi cloud gagal.', 'danger');
               } finally {
                 setIsSyncingSupabase(false);
               }
@@ -346,7 +346,7 @@ export default function GlobalSettingsScreen() {
               <Text style={styles.actionIcon}>⚡</Text>
               <View style={{ flex: 1, paddingRight: 8 }}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                  <Text style={[styles.actionTitle, { color: palette.ink }]}>Supabase Realtime Cloud Sync</Text>
+                  <Text style={[styles.actionTitle, { color: palette.ink }]}>Sinkron Cloud</Text>
                   <View style={{ backgroundColor: '#DCFCE7', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6 }}>
                     <Text style={{ fontSize: 9, fontWeight: '800', color: '#16A34A' }}>REALTIME</Text>
                   </View>
@@ -354,7 +354,7 @@ export default function GlobalSettingsScreen() {
                 <Text style={[styles.actionDesc, { color: palette.inkMuted }]}>
                   {googleUser
                     ? `${googleUser.email} • ${lastSupabaseSyncTime ? formatDate(lastSupabaseSyncTime) : 'Siap sync'}`
-                    : 'Masuk dengan Google untuk sinkronisasi instan antar HP'}
+                    : 'Hubungkan Google untuk sinkron antar-perangkat'}
                 </Text>
               </View>
             </View>
@@ -383,20 +383,20 @@ export default function GlobalSettingsScreen() {
                       await linkGoogleAccountToSupabase(user);
                       const pulled = await pullCloudDataToLocal(db);
                       if (pulled > 0) {
-                        pullInfo = `\n\n📥 Berhasil memulihkan ${pulled} data dari Cloud!`;
+                        pullInfo = `\n${pulled} data dipulihkan dari cloud.`;
                       }
                     } catch (syncErr: any) {
                       console.warn('Post-login sync error:', syncErr);
                     }
                     showModalAlert(
                       'Akun Terhubung',
-                      `Akun Google & Supabase aktif:\n${user.email}${pullInfo}`,
+                      `${user.email}${pullInfo}`,
                       'success',
                       '⚡'
                     );
                   }
                 } catch (e: any) {
-                  showModalAlert('Gagal Masuk', e?.message || 'Tidak dapat menghubungkan akun Google.', 'danger');
+                  showModalAlert('Gagal Masuk', e?.message || 'Gagal menghubungkan Google.', 'danger');
                 }
               } else {
                 setShowDriveModal(true);
@@ -416,7 +416,7 @@ export default function GlobalSettingsScreen() {
               <Text style={styles.actionIcon}>☁️</Text>
               <View style={{ flex: 1, paddingRight: 8 }}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                  <Text style={[styles.actionTitle, { color: palette.ink }]}>Google Drive Cloud Backup</Text>
+                  <Text style={[styles.actionTitle, { color: palette.ink }]}>Google Drive Backup</Text>
                   {googleUser && (
                     <View style={{ backgroundColor: '#DCFCE7', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6 }}>
                       <Text style={{ fontSize: 9, fontWeight: '800', color: '#16A34A' }}>AKTIF</Text>
@@ -425,8 +425,8 @@ export default function GlobalSettingsScreen() {
                 </View>
                 <Text style={[styles.actionDesc, { color: palette.inkMuted }]}>
                   {googleUser
-                    ? `${googleUser.email} • Terakhir: ${lastDriveBackupTime ? formatDate(lastDriveBackupTime) : 'Belum pernah'}`
-                    : 'Sinkronisasi otomatis & aman ke Google Drive pribadi'}
+                    ? `${googleUser.email} • ${lastDriveBackupTime ? formatDate(lastDriveBackupTime) : 'Belum ada cadangan'}`
+                    : 'Cadangan data sekunder di Google Drive'}
                 </Text>
               </View>
             </View>
@@ -1132,11 +1132,11 @@ export default function GlobalSettingsScreen() {
                 setGoogleUser(null);
                 setDriveBackups([]);
                 setShowDriveModal(false);
-                showModalAlert('Keluar Akun', 'Akun Google & Supabase telah diputuskan.', 'info');
+                showModalAlert('Akun Keluar', 'Akun Google telah diputuskan.', 'info');
               }}
             >
               <Text style={{ fontSize: 12, fontWeight: '700', color: palette.expense }}>
-                Putuskan Sambungan Akun Google
+                Keluar dari Akun Google
               </Text>
             </Pressable>
           </View>
