@@ -1,6 +1,7 @@
 import { type SQLiteDatabase } from 'expo-sqlite';
 import { supabase } from './supabaseClient';
 import { setSetting } from '../database/queries';
+import { getCurrentGoogleUser, type GoogleUserInfo } from '../utils/googleDrive';
 
 export interface SyncStats {
   pushed: number;
@@ -9,25 +10,76 @@ export interface SyncStats {
 
 let isSyncInProgress = false;
 
-/**
- * Pastikan user sudah terautentikasi (Anonymous auth atau login)
- * Jika belum ada session, gunakan signInAnonymously agar RLS auth.uid() valid
- */
-export async function ensureSupabaseSession() {
-  const { data: { session } } = await supabase.auth.getSession();
-  if (session) return session;
-
-  const { data, error } = await supabase.auth.signInAnonymously();
-  if (error) {
-    console.warn('Supabase signInAnonymously error:', error);
-    throw error;
-  }
-  return data.session;
+function getDeterministicPassword(googleUser: GoogleUserInfo): string {
+  return `CatatKu_Sec!_${googleUser.id}_${googleUser.email.toLowerCase()}`;
 }
 
-/**
- * 1. PUSH: Kirim data lokal SQLite ke Supabase Cloud
- */
+export async function linkGoogleAccountToSupabase(googleUser: GoogleUserInfo) {
+  const email = googleUser.email.toLowerCase().trim();
+  const password = getDeterministicPassword(googleUser);
+
+  const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
+    email,
+    password,
+  });
+
+  if (!signInError && signInData?.session) {
+    return signInData.session;
+  }
+
+  const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
+    email,
+    password,
+    options: {
+      data: {
+        google_id: googleUser.id,
+        display_name: googleUser.name ?? '',
+      },
+    },
+  });
+
+  if (signUpError) {
+    console.warn('Supabase linkGoogleAccount signUp error:', signUpError);
+  }
+
+  if (signUpData?.session) {
+    return signUpData.session;
+  }
+
+  const { data: retryData } = await supabase.auth.signInWithPassword({
+    email,
+    password,
+  });
+
+  return retryData?.session || null;
+}
+
+export async function unlinkSupabaseSession() {
+  try {
+    await supabase.auth.signOut();
+  } catch (e) {
+    console.warn('unlinkSupabaseSession error:', e);
+  }
+}
+
+export async function ensureSupabaseSession() {
+  const { data: { session } } = await supabase.auth.getSession();
+  if (session?.user) return session;
+
+  const googleUser = await getCurrentGoogleUser();
+  if (googleUser) {
+    const linkedSession = await linkGoogleAccountToSupabase(googleUser);
+    if (linkedSession) return linkedSession;
+  }
+
+  try {
+    const { data } = await supabase.auth.signInAnonymously();
+    if (data?.session) return data.session;
+  } catch {}
+
+  return null;
+}
+
 export async function pushLocalDataToSupabase(db: SQLiteDatabase): Promise<number> {
   const session = await ensureSupabaseSession();
   const userId = session?.user?.id;
@@ -35,7 +87,6 @@ export async function pushLocalDataToSupabase(db: SQLiteDatabase): Promise<numbe
 
   let totalPushed = 0;
 
-  // 1. Cashbooks
   const cashbooks = await db.getAllAsync<any>('SELECT * FROM cashbooks');
   if (cashbooks.length > 0) {
     const payload = cashbooks.map((b) => ({
@@ -55,7 +106,6 @@ export async function pushLocalDataToSupabase(db: SQLiteDatabase): Promise<numbe
     if (!error) totalPushed += payload.length;
   }
 
-  // 2. Categories
   const categories = await db.getAllAsync<any>('SELECT * FROM categories');
   if (categories.length > 0) {
     const payload = categories.map((c) => ({
@@ -70,7 +120,6 @@ export async function pushLocalDataToSupabase(db: SQLiteDatabase): Promise<numbe
     if (!error) totalPushed += payload.length;
   }
 
-  // 3. Accounts
   const accounts = await db.getAllAsync<any>('SELECT * FROM accounts');
   if (accounts.length > 0) {
     const payload = accounts.map((a) => ({
@@ -92,7 +141,6 @@ export async function pushLocalDataToSupabase(db: SQLiteDatabase): Promise<numbe
     if (!error) totalPushed += payload.length;
   }
 
-  // 4. Transactions
   const transactions = await db.getAllAsync<any>('SELECT * FROM transactions');
   if (transactions.length > 0) {
     const payload = transactions.map((t) => ({
@@ -116,7 +164,6 @@ export async function pushLocalDataToSupabase(db: SQLiteDatabase): Promise<numbe
     if (!error) totalPushed += payload.length;
   }
 
-  // 5. Transfers
   const transfers = await db.getAllAsync<any>('SELECT * FROM transfers');
   if (transfers.length > 0) {
     const payload = transfers.map((tr) => ({
@@ -136,7 +183,6 @@ export async function pushLocalDataToSupabase(db: SQLiteDatabase): Promise<numbe
     if (!error) totalPushed += payload.length;
   }
 
-  // 6. Debts
   const debts = await db.getAllAsync<any>('SELECT * FROM debts');
   if (debts.length > 0) {
     const payload = debts.map((d) => ({
@@ -161,22 +207,21 @@ export async function pushLocalDataToSupabase(db: SQLiteDatabase): Promise<numbe
   return totalPushed;
 }
 
-/**
- * 2. PULL: Ambil data dari Supabase Cloud dan sinkronkan ke SQLite lokal
- */
 export async function pullCloudDataToLocal(db: SQLiteDatabase): Promise<number> {
   const session = await ensureSupabaseSession();
   if (!session?.user?.id) return 0;
 
   let pulledCount = 0;
 
-  // 1. Tarik Cashbooks
   const { data: remoteBooks } = await supabase.from('cashbooks').select('*');
+  const bookMap = new Map<string, number>();
   if (remoteBooks && remoteBooks.length > 0) {
     for (const b of remoteBooks) {
       const existing = await db.getFirstAsync<{ id: number }>('SELECT id FROM cashbooks WHERE name = ?', b.name);
-      if (!existing) {
-        await db.runAsync(
+      if (existing) {
+        bookMap.set(b.client_id, existing.id);
+      } else {
+        const ins = await db.runAsync(
           `INSERT INTO cashbooks (name, icon, color, budget_limit, is_archived, is_default, type, created_at)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
           b.name,
@@ -188,41 +233,54 @@ export async function pullCloudDataToLocal(db: SQLiteDatabase): Promise<number> 
           b.type ?? 'personal',
           b.created_at
         );
+        bookMap.set(b.client_id, ins.lastInsertRowId);
         pulledCount++;
       }
     }
   }
 
-  // 2. Tarik Categories
   const { data: remoteCategories } = await supabase.from('categories').select('*');
+  const categoryMap = new Map<string, number>();
   if (remoteCategories && remoteCategories.length > 0) {
     for (const c of remoteCategories) {
       const existing = await db.getFirstAsync<{ id: number }>('SELECT id FROM categories WHERE name = ?', c.name);
-      if (!existing) {
-        await db.runAsync(
+      if (existing) {
+        categoryMap.set(c.client_id, existing.id);
+      } else {
+        const ins = await db.runAsync(
           `INSERT INTO categories (name, icon, is_default) VALUES (?, ?, ?)`,
           c.name,
           c.icon ?? '📦',
           c.is_default ?? 0
         );
+        categoryMap.set(c.client_id, ins.lastInsertRowId);
         pulledCount++;
       }
     }
   }
 
-  // 3. Tarik Accounts
+  const defaultBook = await db.getFirstAsync<{ id: number }>('SELECT id FROM cashbooks ORDER BY id ASC LIMIT 1');
+  const defaultCategory = await db.getFirstAsync<{ id: number }>('SELECT id FROM categories ORDER BY id ASC LIMIT 1');
+  const fallbackBookId = defaultBook?.id ?? 1;
+  const fallbackCategoryId = defaultCategory?.id ?? 1;
+
   const { data: remoteAccounts } = await supabase.from('accounts').select('*');
+  const accountMap = new Map<string, number>();
   if (remoteAccounts && remoteAccounts.length > 0) {
     for (const a of remoteAccounts) {
+      const targetBookId = bookMap.get(a.cashbook_client_id) || fallbackBookId;
       const existing = await db.getFirstAsync<{ id: number }>(
-        'SELECT id FROM accounts WHERE name = ?',
-        a.name
+        'SELECT id FROM accounts WHERE name = ? AND cashbook_id = ?',
+        a.name,
+        targetBookId
       );
-      if (!existing) {
-        await db.runAsync(
+      if (existing) {
+        accountMap.set(a.client_id, existing.id);
+      } else {
+        const ins = await db.runAsync(
           `INSERT INTO accounts (cashbook_id, name, type, balance, min_balance, icon, color, is_default, sort_order, created_at)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-          1,
+          targetBookId,
           a.name,
           a.type,
           a.balance ?? 0,
@@ -233,12 +291,15 @@ export async function pullCloudDataToLocal(db: SQLiteDatabase): Promise<number> 
           a.sort_order ?? 0,
           a.created_at
         );
+        accountMap.set(a.client_id, ins.lastInsertRowId);
         pulledCount++;
       }
     }
   }
 
-  // 4. Tarik Transactions
+  const defaultAccount = await db.getFirstAsync<{ id: number }>('SELECT id FROM accounts ORDER BY id ASC LIMIT 1');
+  const fallbackAccountId = defaultAccount?.id ?? 1;
+
   const { data: remoteTxs } = await supabase.from('transactions').select('*');
   if (remoteTxs && remoteTxs.length > 0) {
     for (const t of remoteTxs) {
@@ -252,14 +313,18 @@ export async function pullCloudDataToLocal(db: SQLiteDatabase): Promise<number> 
       );
 
       if (!existing) {
+        const resolvedBookId = bookMap.get(t.cashbook_client_id) || fallbackBookId;
+        const resolvedAccId = (t.account_client_id && accountMap.get(t.account_client_id)) || fallbackAccountId;
+        const resolvedCatId = categoryMap.get(t.category_client_id) || fallbackCategoryId;
+
         await db.runAsync(
           `INSERT INTO transactions (cashbook_id, account_id, type, amount, category_id, note, date, receipt_image_uri, is_void, void_reason, voided_at, created_at)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-          1,
-          1,
+          resolvedBookId,
+          resolvedAccId,
           t.type,
           t.amount,
-          1,
+          resolvedCatId,
           t.note ?? '',
           t.date,
           t.receipt_image_uri,
@@ -272,7 +337,7 @@ export async function pullCloudDataToLocal(db: SQLiteDatabase): Promise<number> 
       } else if (t.is_void && !existing.is_void) {
         await db.runAsync(
           `UPDATE transactions SET is_void = 1, void_reason = ?, voided_at = ? WHERE id = ?`,
-          t.void_reason ?? 'Void via Supabase',
+          t.void_reason ?? 'Void via Supabase Cloud',
           t.voided_at ?? new Date().toISOString(),
           existing.id
         );
@@ -280,12 +345,72 @@ export async function pullCloudDataToLocal(db: SQLiteDatabase): Promise<number> 
     }
   }
 
+  const { data: remoteTransfers } = await supabase.from('transfers').select('*');
+  if (remoteTransfers && remoteTransfers.length > 0) {
+    for (const tr of remoteTransfers) {
+      const existing = await db.getFirstAsync<{ id: number }>(
+        `SELECT id FROM transfers WHERE amount = ? AND date = ? AND created_at = ?`,
+        tr.amount,
+        tr.date,
+        tr.created_at
+      );
+      if (!existing) {
+        const resolvedBookId = bookMap.get(tr.cashbook_client_id) || fallbackBookId;
+        const resolvedFrom = accountMap.get(tr.from_account_client_id) || fallbackAccountId;
+        const resolvedTo = accountMap.get(tr.to_account_client_id) || fallbackAccountId;
+
+        await db.runAsync(
+          `INSERT INTO transfers (cashbook_id, from_account_id, to_account_id, amount, fee, date, note, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+          resolvedBookId,
+          resolvedFrom,
+          resolvedTo,
+          tr.amount,
+          tr.fee ?? 0,
+          tr.date,
+          tr.note ?? '',
+          tr.created_at
+        );
+        pulledCount++;
+      }
+    }
+  }
+
+  const { data: remoteDebts } = await supabase.from('debts').select('*');
+  if (remoteDebts && remoteDebts.length > 0) {
+    for (const d of remoteDebts) {
+      const existing = await db.getFirstAsync<{ id: number }>(
+        `SELECT id FROM debts WHERE person_name = ? AND amount = ? AND created_at = ?`,
+        d.person_name,
+        d.amount,
+        d.created_at
+      );
+      if (!existing) {
+        const resolvedBookId = bookMap.get(d.cashbook_client_id) || fallbackBookId;
+        const resolvedAccId = (d.account_client_id && accountMap.get(d.account_client_id)) || fallbackAccountId;
+
+        await db.runAsync(
+          `INSERT INTO debts (cashbook_id, account_id, type, person_name, amount, note, due_date, is_paid, date, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          resolvedBookId,
+          resolvedAccId,
+          d.type,
+          d.person_name,
+          d.amount,
+          d.note ?? '',
+          d.due_date,
+          d.is_paid ?? 0,
+          d.date,
+          d.created_at
+        );
+        pulledCount++;
+      }
+    }
+  }
+
   return pulledCount;
 }
 
-/**
- * 3. SYNC LENGKAP: Pull lalu Push
- */
 export async function syncWithSupabase(db: SQLiteDatabase): Promise<SyncStats> {
   if (isSyncInProgress) return { pushed: 0, pulled: 0 };
   try {
@@ -302,10 +427,6 @@ export async function syncWithSupabase(db: SQLiteDatabase): Promise<SyncStats> {
   }
 }
 
-/**
- * 4. REALTIME CHANNEL LISTENER
- * Mendengarkan perubahan tabel secara instan dari perangkat lain via Supabase Realtime
- */
 export function setupSupabaseRealtime(db: SQLiteDatabase, onDataChanged?: () => void) {
   const channel = supabase
     .channel('catatku-realtime-sync')

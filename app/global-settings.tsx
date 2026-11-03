@@ -41,7 +41,12 @@ import {
 } from '../src/utils/googleDrive';
 import { checkForAppUpdate, openDownloadPage } from '../src/utils/appUpdater';
 import { formatDate } from '../src/utils/date';
-import { syncWithSupabase } from '../src/services/supabaseSync';
+import {
+  syncWithSupabase,
+  linkGoogleAccountToSupabase,
+  unlinkSupabaseSession,
+  pullCloudDataToLocal,
+} from '../src/services/supabaseSync';
 import * as DocumentPicker from 'expo-document-picker';
 import { File } from 'expo-file-system';
 import * as LocalAuthentication from 'expo-local-authentication';
@@ -347,9 +352,9 @@ export default function GlobalSettingsScreen() {
                   </View>
                 </View>
                 <Text style={[styles.actionDesc, { color: palette.inkMuted }]}>
-                  {lastSupabaseSyncTime
-                    ? `Terakhir sync: ${formatDate(lastSupabaseSyncTime)}`
-                    : 'Sinkronisasi instan antar HP dengan Postgres Cloud'}
+                  {googleUser
+                    ? `${googleUser.email} • ${lastSupabaseSyncTime ? formatDate(lastSupabaseSyncTime) : 'Siap sync'}`
+                    : 'Masuk dengan Google untuk sinkronisasi instan antar HP'}
                 </Text>
               </View>
             </View>
@@ -373,7 +378,22 @@ export default function GlobalSettingsScreen() {
                   const user = await signInGoogle();
                   if (user) {
                     setGoogleUser(user);
-                    showModalAlert('Terhubung', `Akun Google terhubung:\n${user.email}`, 'success', '☁️');
+                    let pullInfo = '';
+                    try {
+                      await linkGoogleAccountToSupabase(user);
+                      const pulled = await pullCloudDataToLocal(db);
+                      if (pulled > 0) {
+                        pullInfo = `\n\n📥 Berhasil memulihkan ${pulled} data dari Cloud!`;
+                      }
+                    } catch (syncErr: any) {
+                      console.warn('Post-login sync error:', syncErr);
+                    }
+                    showModalAlert(
+                      'Akun Terhubung',
+                      `Akun Google & Supabase aktif:\n${user.email}${pullInfo}`,
+                      'success',
+                      '⚡'
+                    );
                   }
                 } catch (e: any) {
                   showModalAlert('Gagal Masuk', e?.message || 'Tidak dapat menghubungkan akun Google.', 'danger');
@@ -1108,10 +1128,11 @@ export default function GlobalSettingsScreen() {
               }}
               onPress={async () => {
                 await signOutGoogle();
+                await unlinkSupabaseSession();
                 setGoogleUser(null);
                 setDriveBackups([]);
                 setShowDriveModal(false);
-                showModalAlert('Keluar Akun', 'Akun Google telah diputuskan.', 'info');
+                showModalAlert('Keluar Akun', 'Akun Google & Supabase telah diputuskan.', 'info');
               }}
             >
               <Text style={{ fontSize: 12, fontWeight: '700', color: palette.expense }}>
