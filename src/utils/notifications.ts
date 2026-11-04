@@ -1,5 +1,5 @@
 import * as Notifications from 'expo-notifications';
-import { AndroidImportance, AndroidNotificationVisibility } from 'expo-notifications';
+import { AndroidImportance, AndroidNotificationVisibility, SchedulableTriggerInputTypes } from 'expo-notifications';
 import { Platform } from 'react-native';
 import type { SQLiteDatabase } from 'expo-sqlite';
 import { getDebts, getRecurringRules } from '../database/queries';
@@ -152,3 +152,46 @@ export async function triggerLocalNotificationIfDue(db: SQLiteDatabase, cashbook
     });
   }
 }
+
+export const DAILY_REMINDER_NOTIFICATION_ID = 'catatku_daily_reminder';
+
+/**
+ * Jadwalkan pengingat harian pada jam 20:00
+ */
+export async function scheduleDailyReminder(hour: number = 20, minute: number = 0): Promise<boolean> {
+  const hasPermission = await requestNotificationPermission();
+  if (!hasPermission) return false;
+
+  await cancelDailyReminder();
+
+  await Notifications.scheduleNotificationAsync({
+    identifier: DAILY_REMINDER_NOTIFICATION_ID,
+    content: {
+      title: 'CatatKu: Pengingat Harian',
+      body: 'Ada pengeluaran atau pemasukan hari ini? Catat sekarang agar keuangan tetap rapi.',
+      color: '#1B6E67',
+      sound: true,
+      priority: Notifications.AndroidNotificationPriority.DEFAULT,
+    },
+    trigger: {
+      type: SchedulableTriggerInputTypes.DAILY,
+      channelId: 'reminders',
+      hour,
+      minute,
+    },
+  });
+
+  return true;
+}
+
+/**
+ * Batalkan pengingat harian
+ */
+export async function cancelDailyReminder(): Promise<void> {
+  try {
+    await Notifications.cancelScheduledNotificationAsync(DAILY_REMINDER_NOTIFICATION_ID);
+  } catch (e) {
+    console.warn('Gagal membatalkan pengingat harian:', e);
+  }
+}
+

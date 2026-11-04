@@ -32,6 +32,7 @@ import { FONTS } from '../src/constants/theme';
 import { formatNumberThousand, parseRupiahInput } from '../src/utils/currency';
 import DatePickerModal from '../src/components/DatePickerModal';
 import { ModernConfirmModal, type ModalType } from '../src/components/ModernConfirmModal';
+import { compressReceiptImage } from '../src/utils/imageCompressor';
 
 interface QuickTemplate {
   label: string;
@@ -180,7 +181,8 @@ export default function AddTransactionScreen() {
         allowsEditing: true,
       });
       if (!res.canceled && res.assets && res.assets[0]) {
-        setReceiptImage(res.assets[0].uri);
+        const compressedUri = await compressReceiptImage(res.assets[0].uri);
+        setReceiptImage(compressedUri);
       }
     } catch {
       showAlert('Gagal Membuka Kamera', 'Terjadi kendala saat membuka kamera.', 'danger');
@@ -195,7 +197,8 @@ export default function AddTransactionScreen() {
         allowsEditing: true,
       });
       if (!res.canceled && res.assets && res.assets[0]) {
-        setReceiptImage(res.assets[0].uri);
+        const compressedUri = await compressReceiptImage(res.assets[0].uri);
+        setReceiptImage(compressedUri);
       }
     } catch {
       showAlert('Gagal Membuka Galeri', 'Terjadi kendala saat membuka galeri foto.', 'danger');

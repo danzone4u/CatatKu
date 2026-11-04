@@ -55,6 +55,9 @@ import { FONTS } from '../src/constants/theme';
 import { BackArrowIcon } from '../src/components/ActionIcons';
 import { ModernConfirmModal, type ModalType } from '../src/components/ModernConfirmModal';
 import { useLockStore } from '../src/stores/useLockStore';
+import { useCashbookStore } from '../src/stores/useCashbookStore';
+import { scheduleDailyReminder, cancelDailyReminder } from '../src/utils/notifications';
+import { exportMonthlyTransactionsCsv } from '../src/utils/csvExport';
 
 export default function GlobalSettingsScreen() {
   const insets = useSafeAreaInsets();
@@ -88,6 +91,11 @@ export default function GlobalSettingsScreen() {
   // Supabase Sync State
   const [isSyncingSupabase, setIsSyncingSupabase] = useState(false);
   const [lastSupabaseSyncTime, setLastSupabaseSyncTime] = useState<string | null>(null);
+
+  // Active Cashbook & Extra Features
+  const activeCashbook = useCashbookStore((s) => s.activeCashbook);
+  const [dailyReminderEnabled, setDailyReminderEnabled] = useState(false);
+  const [exportingMonthlyCsv, setExportingMonthlyCsv] = useState(false);
 
   // Modern Confirm Modal
   const [confirmModal, setConfirmModal] = useState<{
@@ -157,6 +165,9 @@ export default function GlobalSettingsScreen() {
       const bio = await getSetting(db, 'biometric_enabled');
       setBiometricEnabled(bio !== '0');
 
+      const reminder = await getSetting(db, 'daily_reminder_enabled');
+      setDailyReminderEnabled(reminder === '1' || reminder === 'true');
+
       const hasHardware = await LocalAuthentication.hasHardwareAsync();
       const isEnrolled = await LocalAuthentication.isEnrolledAsync();
       setHasBiometricSensor(hasHardware && isEnrolled);
@@ -219,6 +230,41 @@ export default function GlobalSettingsScreen() {
     setBiometricEnabled(val);
     await setSetting(db, 'biometric_enabled', val ? '1' : '0');
     requestLockCheck();
+  }
+
+  async function handleToggleReminder(val: boolean) {
+    if (val) {
+      const success = await scheduleDailyReminder(20, 0);
+      if (success) {
+        setDailyReminderEnabled(true);
+        await setSetting(db, 'daily_reminder_enabled', '1');
+        showModalAlert('Pengingat Aktif', 'Pengingat harian disetel pukul 20:00.', 'success', '⏰');
+      } else {
+        showModalAlert('Izin Dibutuhkan', 'Izinkan notifikasi di pengaturan sistem perangkat.', 'warning', '🔔');
+      }
+    } else {
+      await cancelDailyReminder();
+      setDailyReminderEnabled(false);
+      await setSetting(db, 'daily_reminder_enabled', '0');
+      showModalAlert('Pengingat Nonaktif', 'Pengingat harian dimatikan.', 'info', '🔕');
+    }
+  }
+
+  async function handleExportMonthlyCsv() {
+    setExportingMonthlyCsv(true);
+    try {
+      const res = await exportMonthlyTransactionsCsv(db, {
+        cashbookId: activeCashbook?.id,
+        cashbookName: activeCashbook?.name,
+      });
+      if (!res.success) {
+        showModalAlert('Gagal', res.message, 'danger');
+      }
+    } catch (err: any) {
+      showModalAlert('Gagal Ekspor', err?.message || 'Gagal membuat file CSV.', 'danger');
+    } finally {
+      setExportingMonthlyCsv(false);
+    }
   }
 
   return (
@@ -315,6 +361,24 @@ export default function GlobalSettingsScreen() {
               <Text style={[styles.linkArrow, { color: palette.inkMuted }]}>›</Text>
             </Pressable>
           )}
+        </View>
+
+        {/* Seksi: Pengingat & Notifikasi */}
+        <Text style={[styles.sectionTitle, { color: palette.inkSecondary }]}>PENGINGAT & NOTIFIKASI</Text>
+        <View style={[styles.card, { backgroundColor: palette.card, borderColor: palette.border }]}>
+          <View style={styles.settingRow}>
+            <View style={{ flex: 1, paddingRight: 8 }}>
+              <Text style={[styles.settingLabel, { color: palette.ink }]}>Pengingat Catat Harian</Text>
+              <Text style={[styles.settingDesc, { color: palette.inkMuted }]}>
+                Notifikasi pengingat malam setiap pukul 20:00
+              </Text>
+            </View>
+            <Switch
+              value={dailyReminderEnabled}
+              onValueChange={handleToggleReminder}
+              trackColor={{ false: palette.border, true: palette.primary }}
+            />
+          </View>
         </View>
 
         {/* Seksi 3: Cadangan & Pemulihan Data */}
@@ -428,6 +492,29 @@ export default function GlobalSettingsScreen() {
                   {googleUser
                     ? `${googleUser.email} • ${lastDriveBackupTime ? formatDate(lastDriveBackupTime) : 'Belum ada cadangan'}`
                     : 'Cadangan data sekunder di Google Drive'}
+                </Text>
+              </View>
+            </View>
+            <Text style={[styles.linkArrow, { color: palette.inkMuted }]}>›</Text>
+          </Pressable>
+
+          <Pressable
+            style={({ pressed }) => [
+              styles.actionRow,
+              { borderTopWidth: 1, borderTopColor: palette.borderSubtle },
+              pressed && { opacity: 0.7 },
+            ]}
+            disabled={exportingMonthlyCsv}
+            onPress={handleExportMonthlyCsv}
+          >
+            <View style={styles.actionLeft}>
+              <Text style={styles.actionIcon}>📊</Text>
+              <View>
+                <Text style={[styles.actionTitle, { color: palette.ink }]}>
+                  {exportingMonthlyCsv ? 'Menyiapkan CSV...' : 'Ekspor Rekap CSV / Excel'}
+                </Text>
+                <Text style={[styles.actionDesc, { color: palette.inkMuted }]}>
+                  Rekap transaksi bulan ini ke Excel, WhatsApp, atau Email
                 </Text>
               </View>
             </View>
